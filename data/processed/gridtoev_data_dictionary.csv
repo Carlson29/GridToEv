@@ -1,0 +1,132 @@
+column,role,unit,source,dtype
+issue_timestamp_utc,identifier,UTC timestamp,Derived alignment,"datetime64[us, UTC]"
+entsoe_fossil_gas_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_fossil_hard_coal_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_fossil_oil_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_fossil_peat_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_hydro_pumped_storage_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_hydro_run_of_river_and_poundage_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_other_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_solar_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_wind_onshore_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_generation_imputed_flag,feature,binary,Hack the Climate / ENTSO-E samples,int8
+entsoe_total_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_renewable_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_nonrenewable_generation_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_actual_load_mw,feature,MW,Hack the Climate / ENTSO-E samples,float64
+entsoe_load_imputed_flag,feature,binary,Hack the Climate / ENTSO-E samples,int8
+entsoe_price_eur_mwh,feature,EUR/MWh,Hack the Climate / ENTSO-E samples,float64
+entsoe_price_hourly_carry_forward_flag,feature,binary,Hack the Climate / ENTSO-E samples,int8
+eirgrid_ie_generation_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_demand_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_wind_availability_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_wind_generation_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_solar_availability_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_solar_generation_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_hydro_generation_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ewic_flow_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_greenlink_flow_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_wind_penetration_ratio,feature,ratio,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_solar_penetration_ratio,feature,ratio,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_generation_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_demand_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_wind_availability_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_wind_generation_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_solar_availability_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_solar_generation_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_hydro_generation_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_interjurisdictional_flow_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_wind_penetration_ratio,feature,ratio,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_solar_penetration_ratio,feature,ratio,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_oversupply_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_all_island_oversupply_ratio,feature,ratio,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_snsp_ratio,feature,ratio,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_system_imputed_flag,feature,binary,EirGrid System Data Qtr Hourly 2026,int8
+eirgrid_ie_variable_renewable_generation_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_variable_renewable_availability_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_renewable_headroom_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_net_load_mw,feature,MW,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_ie_renewable_share_ratio,feature,ratio,EirGrid System Data Qtr Hourly 2026,float64
+eirgrid_snsp_headroom_to_75pct,feature,ratio,EirGrid System Data Qtr Hourly 2026,float64
+entsoe_price_negative_flag,feature,binary,Hack the Climate / ENTSO-E samples,int8
+entsoe_price_below_20_flag,feature,binary,Hack the Climate / ENTSO-E samples,int8
+high_wind_low_load_interaction,feature,MW,Derived rolling/lag feature,float64
+hour_sin,feature,ratio,Derived,float64
+hour_cos,feature,ratio,Derived,float64
+weekday,feature,integer,Derived calendar,int8
+weekday_sin,feature,ratio,Derived,float64
+weekday_cos,feature,ratio,Derived,float64
+is_weekend,feature,binary,Derived,int8
+month,feature,integer,Derived calendar,int8
+wind_lag_1,feature,MW,Derived rolling/lag feature,float64
+wind_lag_2,feature,MW,Derived rolling/lag feature,float64
+wind_lag_4,feature,MW,Derived rolling/lag feature,float64
+wind_lag_12,feature,MW,Derived rolling/lag feature,float64
+wind_lag_48,feature,MW,Derived rolling/lag feature,float64
+wind_ramp_30m,feature,MW,Derived rolling/lag feature,float64
+wind_ramp_60m,feature,MW,Derived rolling/lag feature,float64
+load_lag_1,feature,MW,Derived rolling/lag feature,float64
+load_lag_2,feature,MW,Derived rolling/lag feature,float64
+load_lag_4,feature,MW,Derived rolling/lag feature,float64
+load_lag_12,feature,MW,Derived rolling/lag feature,float64
+load_lag_48,feature,MW,Derived rolling/lag feature,float64
+load_ramp_30m,feature,MW,Derived rolling/lag feature,float64
+load_ramp_60m,feature,MW,Derived rolling/lag feature,float64
+price_lag_1,feature,EUR/MWh,Derived from organiser price,float64
+price_lag_2,feature,EUR/MWh,Derived from organiser price,float64
+price_lag_4,feature,EUR/MWh,Derived from organiser price,float64
+price_lag_12,feature,EUR/MWh,Derived from organiser price,float64
+price_lag_48,feature,EUR/MWh,Derived from organiser price,float64
+price_ramp_30m,feature,EUR/MWh,Derived from organiser price,float64
+price_ramp_60m,feature,EUR/MWh,Derived from organiser price,float64
+snsp_lag_1,feature,ratio,Derived,float64
+snsp_lag_2,feature,ratio,Derived,float64
+snsp_lag_4,feature,ratio,Derived,float64
+snsp_lag_12,feature,ratio,Derived,float64
+snsp_lag_48,feature,ratio,Derived,float64
+snsp_ramp_30m,feature,ratio,Derived,float64
+snsp_ramp_60m,feature,ratio,Derived,float64
+oversupply_lag_1,feature,MW,Derived rolling/lag feature,float64
+oversupply_lag_2,feature,MW,Derived rolling/lag feature,float64
+oversupply_lag_4,feature,MW,Derived rolling/lag feature,float64
+oversupply_lag_12,feature,MW,Derived rolling/lag feature,float64
+oversupply_lag_48,feature,MW,Derived rolling/lag feature,float64
+oversupply_ramp_30m,feature,MW,Derived rolling/lag feature,float64
+oversupply_ramp_60m,feature,MW,Derived rolling/lag feature,float64
+dispatch_down_mwh_lag_1,feature,MWh per half-hour,Derived from lagged EirGrid labels,float64
+dispatch_down_event_lag_1,feature,binary,Derived from lagged EirGrid labels,int8
+dispatch_down_mwh_lag_2,feature,MWh per half-hour,Derived from lagged EirGrid labels,float64
+dispatch_down_event_lag_2,feature,binary,Derived from lagged EirGrid labels,int8
+dispatch_down_mwh_lag_4,feature,MWh per half-hour,Derived from lagged EirGrid labels,float64
+dispatch_down_event_lag_4,feature,binary,Derived from lagged EirGrid labels,int8
+dispatch_down_mwh_lag_48,feature,MWh per half-hour,Derived from lagged EirGrid labels,float64
+dispatch_down_event_lag_48,feature,binary,Derived from lagged EirGrid labels,int8
+wind_rolling_mean_6,feature,MW,Derived rolling/lag feature,float64
+wind_rolling_std_6,feature,MW,Derived rolling/lag feature,float64
+load_rolling_mean_6,feature,MW,Derived rolling/lag feature,float64
+price_rolling_mean_6,feature,EUR/MWh,Derived from organiser price,float64
+price_rolling_std_6,feature,EUR/MWh,Derived from organiser price,float64
+wind_rolling_mean_12,feature,MW,Derived rolling/lag feature,float64
+wind_rolling_std_12,feature,MW,Derived rolling/lag feature,float64
+load_rolling_mean_12,feature,MW,Derived rolling/lag feature,float64
+price_rolling_mean_12,feature,EUR/MWh,Derived from organiser price,float64
+price_rolling_std_12,feature,EUR/MWh,Derived from organiser price,float64
+wind_rolling_mean_48,feature,MW,Derived rolling/lag feature,float64
+wind_rolling_std_48,feature,MW,Derived rolling/lag feature,float64
+load_rolling_mean_48,feature,MW,Derived rolling/lag feature,float64
+price_rolling_mean_48,feature,EUR/MWh,Derived from organiser price,float64
+price_rolling_std_48,feature,EUR/MWh,Derived from organiser price,float64
+high_frequency_min_generation_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+rocof_inertia_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+snsp_curtailment_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+transmission_constraint_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+tso_test_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+dispatch_down_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+curtailment_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+constraint_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+other_reduction_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+forecast_horizon_minutes,feature,minutes,Derived alignment,int64
+target_timestamp_utc,identifier,UTC timestamp,Derived alignment,"datetime64[us, UTC]"
+dispatch_down_event,target,binary,EirGrid DD Half-Hourly 2026,int8
+recoverable_surplus_upper_bound_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64
+recoverable_surplus_100mw_flex_mwh,target,MWh per half-hour,EirGrid DD Half-Hourly 2026,float64

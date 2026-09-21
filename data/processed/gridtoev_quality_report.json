@@ -1,0 +1,24 @@
+{
+  "dataset": "data/processed/gridtoev_model_ready.csv",
+  "rows": 2867,
+  "columns": 131,
+  "issue_timestamp_min_utc": "2026-01-02T00:00:00+00:00",
+  "issue_timestamp_max_utc": "2026-01-31T22:30:00+00:00",
+  "forecast_horizons_minutes": [
+    30,
+    60
+  ],
+  "duplicate_natural_keys": 0,
+  "missing_cells": 0,
+  "max_target_accounting_difference_mwh": 0.020000000000095497,
+  "event_rate_by_horizon": {
+    "30": 0.4504881450488145,
+    "60": 0.45010467550593164
+  },
+  "assumptions": {
+    "organiser_sample_timezone": "UTC; January overlap means Europe/Dublin offset is zero",
+    "price_alignment": "Hourly IE_SEM prices carried forward once to 30-minute intervals",
+    "short_gap_policy": "Time interpolation limited to two half-hour steps with flags",
+    "flexible_load_scenario_mw": 100.0
+  }
+}

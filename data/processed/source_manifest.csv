@@ -1,0 +1,6 @@
+source,url,local_path,bytes,sha256
+generation,https://hacktheclimate.io/samples/generation.csv,data/raw/hacktheclimate/generation.csv,839000,89b7dbb42126dcbcb87d1b9c1213daea2d548c7a1a324625686c2a61d90a149c
+load,https://hacktheclimate.io/samples/load.csv,data/raw/hacktheclimate/load.csv,92890,c6e06553d9101a4fc7c14a7dfdcba78ad22cb3057f2e12d01258b58714acdfd6
+prices,https://hacktheclimate.io/samples/prices.csv,data/raw/hacktheclimate/prices.csv,116993,ad19188ed88a2134249c030b56e45b0cd8dce646cb5d5a71779171401158e335
+eirgrid_system_2026,https://cms.eirgrid.ie/sites/default/files/publications/System-Data-Qtr-Hourly-2026-V7.xlsx,data/raw/eirgrid/system_data_qtr_hourly_2026_v7.xlsx,7270788,7f2f046dc04bcd43f4bf30c065d9f383c99e8f15c7c3f84796c3bd734567be2c
+eirgrid_dispatch_down_2026,https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2026-V9.xlsx,data/raw/eirgrid/dd_half_hourly_2026_v9.xlsx,3417425,b641876ea690ca5c4ffc180b8ba99cac80518ee164caa0191bacd6b5b528c1bb
