@@ -41,24 +41,27 @@ The code never shuffles the observations. It gives the oldest 70% of issue times
 15% to validation, and the newest 15% to testing. This imitates the real task: learn from the past and
 predict the future.
 
-Validation chooses three operating settings:
+Validation and expanding-window backtests choose the operating settings:
 
 - the probability threshold that converts event probability into yes/no;
-- how much weight to give the MWh machine-learning correction versus the latest observed value; and
+- a damped recent trend for each forecast horizon;
+- whether the MWh machine-learning correction improves every historical backtest fold; and
 - how much to widen the P10-P90 uncertainty range so it is better calibrated.
 
 The final test period is not used for those choices.
 
 ## 3. Models in the bundle
 
-The event classifier answers, “Is dispatch-down likely?” The MWh model answers, “How much energy is
-at risk?” The curtailment and constraint models split that quantity into system-wide and network-driven
-components. The three quantile models provide a low, middle, and high estimate instead of pretending
-one number is certain.
+The event classifier answers, “Is dispatch-down likely?” The central MWh forecast projects the latest
+completed dispatch-down value with a damped trend learned separately for 30 and 60 minutes. A boosted-
+tree residual model may adjust that forecast, but only when its adjustment improves every rolling
+backtest fold. The curtailment and constraint models split the quantity into system-wide and network-
+driven components. Three residual quantile models provide low, middle, and high estimates.
 
-All models use histogram gradient-boosted trees. In plain language, they combine many small decision
-trees that learn patterns such as “high wind, low demand, and low SNSP headroom usually means greater
-risk.”
+The learned components use histogram gradient-boosted trees. In plain language, they combine many
+small decision trees that learn patterns such as “high wind, low demand, and low SNSP headroom usually
+means greater risk.” The damped trend is deliberately simpler because it proved more stable on this
+short dataset.
 
 ## 4. Saved training contract
 
@@ -80,7 +83,7 @@ The demo endpoints are:
 
 The live integration endpoint is:
 
-- `POST /predict/features`: accept a complete 117-feature snapshot created by a future live data
+- `POST /predict/features`: accept a complete 119-feature snapshot created by a future live data
   ingestion service.
 
 Other useful endpoints are `GET /health`, `GET /model-info`, and the automatic interactive API page at
@@ -109,6 +112,7 @@ then calls `/predict/features`.
 ## 8. Current limitation
 
 The combined dataset covers one fully populated month because the organiser price sample is limited to
-January 2026. Event detection is strong on the held-out period, but the MWh hybrid does not beat pure
-persistence there, and that period contains no positive curtailment examples. The implementation is
-complete and honest about those limits; expanding the training history is the next modelling priority.
+January 2026. The improved MWh forecast beats the older, one-interval-stale persistence baseline on the
+held-out period, but the rolling guardrail gives the boosted-tree residual correction zero weight until
+it proves stable across regimes. The test period contains no positive curtailment examples. Expanding
+the training history remains the next modelling priority.

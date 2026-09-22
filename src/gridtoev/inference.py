@@ -105,11 +105,28 @@ class PredictionService:
         X = frame.reindex(columns=columns)
 
         probability = float(models["event_classifier"].predict_proba(X)[0, 1])
-        persistence = max(float(X["dispatch_down_mwh_lag_1"].iloc[0]), 0.0)
+        latest_observed = max(
+            float(X["dispatch_down_mwh_latest_observed"].iloc[0]),
+            0.0,
+        )
+        previous_observed = max(float(X["dispatch_down_mwh_lag_1"].iloc[0]), 0.0)
+        horizon_key = str(int(forecast_horizon_minutes))
+        trend_alpha = float(
+            self.metadata["dispatch_trend_alpha_by_horizon"][horizon_key]
+        )
+        trend_baseline = max(
+            latest_observed + trend_alpha * (latest_observed - previous_observed),
+            0.0,
+        )
         predicted_change = float(models["dispatch_down_regressor"].predict(X)[0])
-        ml_total = max(persistence + predicted_change, 0.0)
-        ml_weight = float(self.metadata["dispatch_regression_ml_weight"])
-        total = max(ml_weight * ml_total + (1.0 - ml_weight) * persistence, 0.0)
+        ml_total = max(latest_observed + predicted_change, 0.0)
+        ml_weight = float(
+            self.metadata["dispatch_regression_ml_weight_by_horizon"][horizon_key]
+        )
+        total = max(
+            ml_weight * ml_total + (1.0 - ml_weight) * trend_baseline,
+            0.0,
+        )
         raw_curtailment = max(float(models["curtailment_regressor"].predict(X)[0]), 0.0)
         raw_constraint = max(float(models["constraint_regressor"].predict(X)[0]), 0.0)
 
@@ -126,7 +143,11 @@ class PredictionService:
             constraint = total - curtailment
 
         raw_quantiles = [
-            max(float(models[f"dispatch_down_quantile_{quantile}"].predict(X)[0]), 0.0)
+            max(
+                latest_observed
+                + float(models[f"dispatch_down_quantile_{quantile}"].predict(X)[0]),
+                0.0,
+            )
             for quantile in ("p10", "p50", "p90")
         ]
         p10, p50, p90 = sorted(raw_quantiles)

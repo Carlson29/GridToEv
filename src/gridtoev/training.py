@@ -73,7 +73,12 @@ def _sha256(path: Path) -> str:
 
 def load_dataset(path: Path | str) -> pd.DataFrame:
     data = pd.read_csv(path)
-    required = IDENTIFIER_COLUMNS | TARGET_COLUMNS | {"forecast_horizon_minutes"}
+    required = IDENTIFIER_COLUMNS | TARGET_COLUMNS | {
+        "forecast_horizon_minutes",
+        "dispatch_down_mwh_latest_observed",
+        "dispatch_down_event_latest_observed",
+        "dispatch_down_mwh_lag_1",
+    }
     missing = sorted(required - set(data.columns))
     if missing:
         raise ValueError(f"Dataset is missing required columns: {missing}")
@@ -217,9 +222,11 @@ def _fit_models(
     }
     for model_name, target in target_mapping.items():
         training_target = data[target].clip(lower=0)
-        if model_name == "dispatch_down_regressor":
+        if model_name == "dispatch_down_regressor" or model_name.startswith(
+            "dispatch_down_quantile_"
+        ):
             training_target = (
-                data[target] - data["dispatch_down_mwh_lag_1"]
+                data[target] - data["dispatch_down_mwh_latest_observed"]
             )
         models[model_name].fit(X, training_target)
     return models
@@ -272,33 +279,179 @@ def _regression_metrics(y_true: pd.Series, predictions: np.ndarray) -> dict[str,
 def _dispatch_ml_prediction(models: dict[str, Pipeline], data: pd.DataFrame, columns: list[str]) -> np.ndarray:
     predicted_change = models["dispatch_down_regressor"].predict(data[columns])
     return np.maximum(
-        data["dispatch_down_mwh_lag_1"].to_numpy(dtype=float) + predicted_change,
+        data["dispatch_down_mwh_latest_observed"].to_numpy(dtype=float) + predicted_change,
         0.0,
     )
 
 
-def _select_dispatch_blend_weight(
+def _dispatch_quantile_prediction(
+    models: dict[str, Pipeline],
+    data: pd.DataFrame,
+    columns: list[str],
+    quantile: str,
+) -> np.ndarray:
+    predicted_change = models[f"dispatch_down_quantile_{quantile}"].predict(data[columns])
+    return np.maximum(
+        data["dispatch_down_mwh_latest_observed"].to_numpy(dtype=float)
+        + predicted_change,
+        0.0,
+    )
+
+
+def _dispatch_trend_prediction(
+    data: pd.DataFrame,
+    alpha_by_horizon: dict[str, float],
+) -> np.ndarray:
+    """Project the most recent observation with a damped, horizon-specific trend."""
+    horizons = data["forecast_horizon_minutes"].astype(int)
+    supported = {str(value) for value in horizons.unique()}
+    missing = sorted(supported - set(alpha_by_horizon))
+    if missing:
+        raise ValueError(f"Missing dispatch trend settings for horizons: {missing}")
+
+    latest = data["dispatch_down_mwh_latest_observed"].to_numpy(dtype=float)
+    previous = data["dispatch_down_mwh_lag_1"].to_numpy(dtype=float)
+    alpha = horizons.astype(str).map(alpha_by_horizon).to_numpy(dtype=float)
+    return np.maximum(latest + alpha * (latest - previous), 0.0)
+
+
+def _select_dispatch_strategy(
     y_true: pd.Series,
     ml_prediction: np.ndarray,
-    persistence_prediction: np.ndarray,
-) -> float:
-    best_weight = 0.0
-    best_mae = float("inf")
-    for weight in np.linspace(0.0, 1.0, 21):
-        blended = weight * ml_prediction + (1.0 - weight) * persistence_prediction
-        score = mean_absolute_error(y_true, np.maximum(blended, 0.0))
-        if score < best_mae:
-            best_mae = float(score)
-            best_weight = float(weight)
-    return best_weight
+    validation: pd.DataFrame,
+    fold_ids: np.ndarray | None = None,
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Choose stable trend damping and ML weight independently by horizon.
+
+    The ML correction is accepted only when it improves on the trend baseline
+    in every supplied rolling-origin fold. This deliberately favours a robust
+    short-history forecast over a validation-period win that may not persist.
+    """
+    alpha_by_horizon: dict[str, float] = {}
+    ml_weight_by_horizon: dict[str, float] = {}
+    truth = np.asarray(y_true, dtype=float)
+    fold_ids = np.zeros(len(validation), dtype=int) if fold_ids is None else fold_ids
+
+    for horizon in SUPPORTED_FORECAST_HORIZONS:
+        mask = validation["forecast_horizon_minutes"].eq(horizon).to_numpy()
+        if not mask.any():
+            raise ValueError(f"Validation data has no {horizon}-minute rows")
+        horizon_frame = validation.loc[mask]
+        best_alpha = 0.0
+        best_trend_mae = float("inf")
+        for alpha in np.linspace(-0.50, 1.50, 81):
+            trend = _dispatch_trend_prediction(
+                horizon_frame,
+                {str(horizon): float(alpha)},
+            )
+            score = float(mean_absolute_error(truth[mask], trend))
+            if (score, float(alpha)) < (best_trend_mae, best_alpha):
+                best_trend_mae = score
+                best_alpha = float(alpha)
+
+        trend = _dispatch_trend_prediction(
+            horizon_frame,
+            {str(horizon): best_alpha},
+        )
+        horizon_fold_ids = np.asarray(fold_ids)[mask]
+        best_weight = 0.0
+        best_score = best_trend_mae
+        for ml_weight in np.linspace(0.25, 1.0, 4):
+            blended = np.maximum(
+                ml_weight * ml_prediction[mask] + (1.0 - ml_weight) * trend,
+                0.0,
+            )
+            stable = all(
+                mean_absolute_error(
+                    truth[mask][horizon_fold_ids == fold],
+                    blended[horizon_fold_ids == fold],
+                )
+                <= mean_absolute_error(
+                    truth[mask][horizon_fold_ids == fold],
+                    trend[horizon_fold_ids == fold],
+                )
+                for fold in np.unique(horizon_fold_ids)
+            )
+            score = float(mean_absolute_error(truth[mask], blended))
+            if stable and score < best_score:
+                best_score = score
+                best_weight = float(ml_weight)
+
+        alpha_by_horizon[str(horizon)] = best_alpha
+        ml_weight_by_horizon[str(horizon)] = best_weight
+    return alpha_by_horizon, ml_weight_by_horizon
+
+
+def _rolling_dispatch_backtest(
+    evaluation_models: dict[str, Pipeline],
+    train: pd.DataFrame,
+    validation: pd.DataFrame,
+    columns: list[str],
+    config: TrainingConfig,
+) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+    """Create expanding-window dispatch predictions without crossing time."""
+    unique_times = np.array(sorted(train["issue_timestamp_utc"].unique()))
+    frames: list[pd.DataFrame] = []
+    predictions: list[np.ndarray] = []
+    fold_ids: list[np.ndarray] = []
+
+    for fold, (train_end_fraction, score_end_fraction) in enumerate(
+        ((0.40, 0.60), (0.60, 0.80), (0.80, 1.00))
+    ):
+        train_end = max(1, int(len(unique_times) * train_end_fraction))
+        score_end = max(train_end + 1, int(len(unique_times) * score_end_fraction))
+        fit_times = set(unique_times[:train_end])
+        score_times = set(unique_times[train_end:score_end])
+        fit = train.loc[train["issue_timestamp_utc"].isin(fit_times)].copy()
+        score = train.loc[train["issue_timestamp_utc"].isin(score_times)].copy()
+        if fit.empty or score.empty:
+            continue
+
+        model = _regressor(config, loss="squared_error")
+        residual = fit["dispatch_down_mwh"] - fit["dispatch_down_mwh_latest_observed"]
+        model.fit(fit[columns], residual)
+        latest = score["dispatch_down_mwh_latest_observed"].to_numpy(dtype=float)
+        prediction = np.maximum(latest + model.predict(score[columns]), 0.0)
+        frames.append(score)
+        predictions.append(prediction)
+        fold_ids.append(np.full(len(score), fold, dtype=int))
+
+    frames.append(validation)
+    predictions.append(_dispatch_ml_prediction(evaluation_models, validation, columns))
+    fold_ids.append(np.full(len(validation), len(fold_ids), dtype=int))
+    return (
+        pd.concat(frames, ignore_index=True),
+        np.concatenate(predictions),
+        np.concatenate(fold_ids),
+    )
+
+
+def _blend_dispatch_predictions(
+    data: pd.DataFrame,
+    ml_prediction: np.ndarray,
+    alpha_by_horizon: dict[str, float],
+    ml_weight_by_horizon: dict[str, float],
+) -> tuple[np.ndarray, np.ndarray]:
+    trend = _dispatch_trend_prediction(data, alpha_by_horizon)
+    weights = (
+        data["forecast_horizon_minutes"]
+        .astype(int)
+        .astype(str)
+        .map(ml_weight_by_horizon)
+        .to_numpy(dtype=float)
+    )
+    blended = np.maximum(weights * ml_prediction + (1.0 - weights) * trend, 0.0)
+    return blended, trend
 
 
 def _evaluate_models(
     models: dict[str, Pipeline],
+    train: pd.DataFrame,
     validation: pd.DataFrame,
     test: pd.DataFrame,
     columns: list[str],
-) -> tuple[dict[str, Any], float, float, float]:
+    config: TrainingConfig,
+) -> tuple[dict[str, Any], float, dict[str, float], dict[str, float], float]:
     validation_probabilities = models["event_classifier"].predict_proba(validation[columns])[:, 1]
     threshold = _select_threshold(validation["dispatch_down_event"], validation_probabilities)
     test_probabilities = models["event_classifier"].predict_proba(test[columns])[:, 1]
@@ -308,34 +461,55 @@ def _evaluate_models(
             validation["dispatch_down_event"], validation_probabilities, threshold
         ),
         "test": _classification_metrics(test["dispatch_down_event"], test_probabilities, threshold),
-        "persistence_baseline_test": _classification_metrics(
+        "latest_observation_baseline_test": _classification_metrics(
+            test["dispatch_down_event"],
+            test["dispatch_down_event_latest_observed"].to_numpy(dtype=float),
+            0.5,
+        ),
+        "stale_persistence_baseline_test": _classification_metrics(
             test["dispatch_down_event"],
             test["dispatch_down_event_lag_1"].to_numpy(dtype=float),
             0.5,
         ),
     }
 
-    validation_ml = _dispatch_ml_prediction(models, validation, columns)
-    validation_persistence = validation["dispatch_down_mwh_lag_1"].to_numpy(dtype=float)
-    dispatch_ml_weight = _select_dispatch_blend_weight(
-        validation["dispatch_down_mwh"],
-        validation_ml,
-        validation_persistence,
+    strategy_frame, strategy_ml, strategy_fold_ids = _rolling_dispatch_backtest(
+        models,
+        train,
+        validation,
+        columns,
+        config,
+    )
+    dispatch_trend_alpha, dispatch_ml_weight = _select_dispatch_strategy(
+        strategy_frame["dispatch_down_mwh"],
+        strategy_ml,
+        strategy_frame,
+        strategy_fold_ids,
     )
     test_ml = _dispatch_ml_prediction(models, test, columns)
-    test_persistence = test["dispatch_down_mwh_lag_1"].to_numpy(dtype=float)
-    test_hybrid = np.maximum(
-        dispatch_ml_weight * test_ml + (1.0 - dispatch_ml_weight) * test_persistence,
-        0.0,
+    test_hybrid, test_trend = _blend_dispatch_predictions(
+        test,
+        test_ml,
+        dispatch_trend_alpha,
+        dispatch_ml_weight,
     )
+    test_latest = test["dispatch_down_mwh_latest_observed"].to_numpy(dtype=float)
+    test_stale_persistence = test["dispatch_down_mwh_lag_1"].to_numpy(dtype=float)
 
     regression: dict[str, Any] = {
         "dispatch_down_mwh": _regression_metrics(test["dispatch_down_mwh"], test_hybrid),
         "dispatch_down_ml_only": _regression_metrics(test["dispatch_down_mwh"], test_ml),
-        "dispatch_down_persistence_baseline": _regression_metrics(
-            test["dispatch_down_mwh"], test_persistence
+        "dispatch_down_trend_baseline": _regression_metrics(
+            test["dispatch_down_mwh"], test_trend
         ),
-        "dispatch_down_ml_blend_weight": dispatch_ml_weight,
+        "dispatch_down_latest_observation_baseline": _regression_metrics(
+            test["dispatch_down_mwh"], test_latest
+        ),
+        "dispatch_down_stale_persistence_baseline": _regression_metrics(
+            test["dispatch_down_mwh"], test_stale_persistence
+        ),
+        "dispatch_down_trend_alpha_by_horizon": dispatch_trend_alpha,
+        "dispatch_down_ml_weight_by_horizon": dispatch_ml_weight,
     }
     for target, model_name in (
         ("curtailment_mwh", "curtailment_regressor"),
@@ -346,15 +520,11 @@ def _evaluate_models(
         )
 
     quantile_predictions = {
-        quantile: np.maximum(models[f"dispatch_down_quantile_{quantile}"].predict(test[columns]), 0.0)
+        quantile: _dispatch_quantile_prediction(models, test, columns, quantile)
         for quantile in ("p10", "p50", "p90")
     }
-    validation_p10 = np.maximum(
-        models["dispatch_down_quantile_p10"].predict(validation[columns]), 0.0
-    )
-    validation_p90 = np.maximum(
-        models["dispatch_down_quantile_p90"].predict(validation[columns]), 0.0
-    )
+    validation_p10 = _dispatch_quantile_prediction(models, validation, columns, "p10")
+    validation_p90 = _dispatch_quantile_prediction(models, validation, columns, "p90")
     validation_lower = np.minimum(validation_p10, validation_p90)
     validation_upper = np.maximum(validation_p10, validation_p90)
     validation_truth = validation["dispatch_down_mwh"].to_numpy(dtype=float)
@@ -384,7 +554,7 @@ def _evaluate_models(
         "classification": classification,
         "regression": regression,
         "uncertainty": quantiles,
-    }, threshold, dispatch_ml_weight, interval_adjustment
+    }, threshold, dispatch_trend_alpha, dispatch_ml_weight, interval_adjustment
 
 
 def _partition_metadata(frame: pd.DataFrame) -> dict[str, Any]:
@@ -419,11 +589,19 @@ def train_and_save(
     )
 
     evaluation_models = _fit_models(_build_models(config), train, columns)
-    metrics, threshold, dispatch_ml_weight, interval_adjustment = _evaluate_models(
+    (
+        metrics,
+        threshold,
+        dispatch_trend_alpha,
+        dispatch_ml_weight,
+        interval_adjustment,
+    ) = _evaluate_models(
         evaluation_models,
+        train,
         validation,
         test,
         columns,
+        config,
     )
 
     # The saved production models see train + validation, while the test period remains untouched.
@@ -450,7 +628,8 @@ def train_and_save(
         "feature_columns": columns,
         "forecast_horizons_minutes": list(SUPPORTED_FORECAST_HORIZONS),
         "classification_threshold": threshold,
-        "dispatch_regression_ml_weight": dispatch_ml_weight,
+        "dispatch_trend_alpha_by_horizon": dispatch_trend_alpha,
+        "dispatch_regression_ml_weight_by_horizon": dispatch_ml_weight,
         "prediction_interval_adjustment_mwh": interval_adjustment,
         "default_component_shares": {
             "curtailment": float(final_training_data["curtailment_mwh"].mean() / component_total),

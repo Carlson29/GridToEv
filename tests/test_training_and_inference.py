@@ -13,7 +13,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from gridtoev.inference import FeatureValidationError, PredictionService
-from gridtoev.training import TrainingConfig, chronological_split, train_and_save
+from gridtoev.training import (
+    TrainingConfig,
+    _dispatch_trend_prediction,
+    chronological_split,
+    train_and_save,
+)
 
 
 def make_synthetic_dataset(path: Path, periods: int = 120) -> pd.DataFrame:
@@ -37,6 +42,8 @@ def make_synthetic_dataset(path: Path, periods: int = 120) -> pd.DataFrame:
                     "load_lag_1": load,
                     "snsp_lag_1": snsp,
                     "dispatch_down_mwh_lag_1": lagged_dd,
+                    "dispatch_down_mwh_latest_observed": lagged_dd + 5.0,
+                    "dispatch_down_event_latest_observed": int(lagged_dd + 5.0 > 0),
                     "dispatch_down_event_lag_1": int(lagged_dd > 0),
                     "dispatch_down_event": int(dispatch_down > 0),
                     "dispatch_down_mwh": dispatch_down,
@@ -108,6 +115,33 @@ class TrainingAndInferenceTests(unittest.TestCase):
         )
         self.assertIn("classification", self.result.metrics)
         self.assertIn("regression", self.result.metrics)
+        self.assertIn(
+            "latest_observation_baseline_test",
+            self.result.metrics["classification"],
+        )
+        self.assertIn(
+            "stale_persistence_baseline_test",
+            self.result.metrics["classification"],
+        )
+        self.assertEqual(
+            set(self.result.bundle["metadata"]["dispatch_trend_alpha_by_horizon"]),
+            {"30", "60"},
+        )
+        self.assertEqual(
+            set(self.result.bundle["metadata"]["dispatch_regression_ml_weight_by_horizon"]),
+            {"30", "60"},
+        )
+
+    def test_dispatch_trend_uses_latest_observation_and_horizon_settings(self) -> None:
+        frame = pd.DataFrame(
+            {
+                "forecast_horizon_minutes": [30, 60],
+                "dispatch_down_mwh_latest_observed": [20.0, 20.0],
+                "dispatch_down_mwh_lag_1": [10.0, 10.0],
+            }
+        )
+        prediction = _dispatch_trend_prediction(frame, {"30": 0.25, "60": 0.5})
+        np.testing.assert_allclose(prediction, [22.5, 25.0])
 
     def test_dataset_prediction_is_bounded_and_reconciled(self) -> None:
         timestamp = self.data["issue_timestamp_utc"].iloc[-20]

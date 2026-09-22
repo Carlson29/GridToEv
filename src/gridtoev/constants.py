@@ -7,7 +7,7 @@ DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "gridtoev_model_bundle.joblib"
 DEFAULT_METRICS_PATH = PROJECT_ROOT / "models" / "training_metrics.json"
 DEFAULT_METADATA_PATH = PROJECT_ROOT / "models" / "model_metadata.json"
 
-MODEL_VERSION = "1.0.0"
+MODEL_VERSION = "1.1.0"
 SUPPORTED_FORECAST_HORIZONS = (30, 60)
 INTERVAL_HOURS = 0.5
 

@@ -12,7 +12,7 @@ It writes one combined modelling table:
 
 - `data/processed/gridtoev_model_ready.csv`
 
-The current build contains 2,867 rows and 131 columns from 2 January through 31 January 2026. Each
+The current build contains 2,867 rows and 133 columns from 2 January through 31 January 2026. Each
 issue time appears once for the 30-minute horizon and once for the 60-minute horizon. The CSV has no
 missing cells and no duplicate issue-time/horizon keys.
 
@@ -89,13 +89,15 @@ The main targets are:
 
 Feature groups include generation mix, load, price, wind and solar availability, renewable share,
 net load, SNSP headroom, interconnector flows, oversupply, calendar cycles, 30-minute to 24-hour
-lags, ramps, rolling statistics, and lagged dispatch-down history.
+lags, ramps, rolling statistics, the latest completed dispatch-down interval, and older dispatch-down
+history.
 
 ## Leakage controls
 
 - Future labels are shifted by one or two half-hour steps before they are attached to feature rows.
-- Contemporaneous dispatch-down values are excluded from the feature block.
-- Dispatch-down is exposed only through lagged features.
+- The latest completed dispatch-down interval is an issue-time feature; every label is attached to a
+  strictly later target timestamp.
+- Older dispatch-down observations remain as lagged features for trend estimation.
 - Rolling statistics end one complete interval before the issue time.
 - The quality gate verifies timestamp ordering and target accounting.
 - Model evaluation should use chronological splits, never a random train/test split.

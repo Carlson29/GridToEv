@@ -1,7 +1,7 @@
 {
   "dataset": "data/processed/gridtoev_model_ready.csv",
   "rows": 2867,
-  "columns": 131,
+  "columns": 133,
   "issue_timestamp_min_utc": "2026-01-02T00:00:00+00:00",
   "issue_timestamp_max_utc": "2026-01-31T22:30:00+00:00",
   "forecast_horizons_minutes": [

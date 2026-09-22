@@ -1,26 +1,36 @@
 {
   "classification": {
     "validation": {
-      "average_precision": 0.9961091157231159,
-      "brier_score": 0.14702444498718412,
-      "precision": 0.9814814814814815,
-      "recall": 0.9217391304347826,
-      "f1": 0.9506726457399103,
+      "average_precision": 0.9988452146770432,
+      "brier_score": 0.042370077908933705,
+      "precision": 0.9852941176470589,
+      "recall": 0.9710144927536232,
+      "f1": 0.9781021897810219,
       "threshold": 0.1,
       "event_rate": 0.8023255813953488,
-      "roc_auc": 0.9854049445865303
+      "roc_auc": 0.9952600170502983
     },
     "test": {
-      "average_precision": 0.9995254049749692,
-      "brier_score": 0.00921263939144219,
-      "precision": 0.9932659932659933,
-      "recall": 1.0,
-      "f1": 0.9966216216216216,
+      "average_precision": 0.9997946125572869,
+      "brier_score": 0.009674369032176576,
+      "precision": 0.9832775919732442,
+      "recall": 0.9966101694915255,
+      "f1": 0.98989898989899,
       "threshold": 0.1,
       "event_rate": 0.6844547563805105,
-      "roc_auc": 0.9990029910269194
+      "roc_auc": 0.9995513459621137
     },
-    "persistence_baseline_test": {
+    "latest_observation_baseline_test": {
+      "average_precision": 0.9811959394244429,
+      "brier_score": 0.016241299303944315,
+      "precision": 0.9832214765100671,
+      "recall": 0.9932203389830508,
+      "f1": 0.9881956155143339,
+      "threshold": 0.5,
+      "event_rate": 0.6844547563805105,
+      "roc_auc": 0.9782278165503491
+    },
+    "stale_persistence_baseline_test": {
       "average_precision": 0.9746855689698114,
       "brier_score": 0.02088167053364269,
       "precision": 0.9766666666666667,
@@ -33,47 +43,68 @@
   },
   "regression": {
     "dispatch_down_mwh": {
-      "mae": 18.852121249648047,
-      "rmse": 29.211578269387438,
-      "wape": 0.2744957721795779,
+      "mae": 11.825026392111367,
+      "rmse": 20.590388344414013,
+      "wape": 0.1721779585205615,
       "actual_total_mwh": 29600.689999999995,
       "nonzero_rate": 0.6844547563805105
     },
     "dispatch_down_ml_only": {
-      "mae": 25.263186048610216,
-      "rmse": 39.631162592021425,
-      "wape": 0.36784389779261917,
+      "mae": 21.81293014088448,
+      "rmse": 35.082750529235156,
+      "wape": 0.3176065453447609,
       "actual_total_mwh": 29600.689999999995,
       "nonzero_rate": 0.6844547563805105
     },
-    "dispatch_down_persistence_baseline": {
+    "dispatch_down_trend_baseline": {
+      "mae": 11.825026392111367,
+      "rmse": 20.590388344414013,
+      "wape": 0.1721779585205615,
+      "actual_total_mwh": 29600.689999999995,
+      "nonzero_rate": 0.6844547563805105
+    },
+    "dispatch_down_latest_observation_baseline": {
+      "mae": 12.04750812064965,
+      "rmse": 20.71200779981912,
+      "wape": 0.17541739736472362,
+      "actual_total_mwh": 29600.689999999995,
+      "nonzero_rate": 0.6844547563805105
+    },
+    "dispatch_down_stale_persistence_baseline": {
       "mae": 16.821786542923434,
       "rmse": 28.148681444312167,
       "wape": 0.24493314176122252,
       "actual_total_mwh": 29600.689999999995,
       "nonzero_rate": 0.6844547563805105
     },
-    "dispatch_down_ml_blend_weight": 0.4,
+    "dispatch_down_trend_alpha_by_horizon": {
+      "30": 0.3500000000000001,
+      "60": 0.4750000000000001
+    },
+    "dispatch_down_ml_weight_by_horizon": {
+      "30": 0.0,
+      "60": 0.0
+    },
     "curtailment_mwh": {
-      "mae": 1.1610120000930115,
-      "rmse": 6.068326449622456,
+      "mae": 0.902806066703265,
+      "rmse": 4.542113205530731,
       "wape": null,
       "actual_total_mwh": 0.0,
       "nonzero_rate": 0.0
     },
     "constraint_mwh": {
-      "mae": 44.32882722928026,
-      "rmse": 70.10906458368576,
-      "wape": 0.6454486208199807,
+      "mae": 41.91367380104561,
+      "rmse": 66.75598219444092,
+      "wape": 0.6102828484150424,
       "actual_total_mwh": 29600.689999999995,
       "nonzero_rate": 0.6844547563805105
     }
   },
   "uncertainty": {
-    "p10_pinball_loss": 6.867909512761022,
-    "p50_pinball_loss": 34.3395475638051,
-    "p90_pinball_loss": 13.47673872382729,
-    "p10_p90_empirical_coverage": 0.7146171693735499,
-    "conformal_interval_adjustment_mwh": 13.986059812125973
+    "p10_pinball_loss": 3.1579167814735887,
+    "p50_pinball_loss": 6.997638705530516,
+    "p90_pinball_loss": 4.238504673277315,
+    "p10_p90_empirical_coverage": 0.7447795823665894,
+    "conformal_interval_adjustment_mwh": 5.441746267545682
   }
 }

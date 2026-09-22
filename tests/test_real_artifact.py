@@ -18,6 +18,15 @@ class RealArtifactTests(unittest.TestCase):
             ROOT / "data" / "processed" / "gridtoev_model_ready.csv",
         )
         service.load()
+        regression = service.bundle["metrics"]["regression"]
+        self.assertLess(
+            regression["dispatch_down_mwh"]["mae"],
+            regression["dispatch_down_stale_persistence_baseline"]["mae"],
+        )
+        self.assertLess(
+            service.bundle["metrics"]["uncertainty"]["p50_pinball_loss"],
+            regression["dispatch_down_stale_persistence_baseline"]["mae"],
+        )
         predictions = service.predict_latest(100.0)
         self.assertEqual({prediction["forecast_horizon_minutes"] for prediction in predictions}, {30, 60})
         for prediction in predictions:
