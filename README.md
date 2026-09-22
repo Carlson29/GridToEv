@@ -1,12 +1,12 @@
-# GridToEV data preparation
+# GridToEV dispatch-down forecasting
 
-This repository builds a modelling-ready dataset for forecasting renewable dispatch-down in Ireland
-30 or 60 minutes ahead. The pipeline combines the Hack the Climate generation, load, and price
-samples with EirGrid system conditions and EirGrid's half-hourly dispatch-down labels.
+This repository prepares energy data, trains the GridToEV forecasting models, and serves predictions
+through FastAPI. It forecasts renewable dispatch-down in Ireland 30 or 60 minutes ahead.
 
-The main deliverable is the executed notebook:
+The two executed notebooks are:
 
 - `notebooks/01_build_model_ready_dataset.ipynb`
+- `notebooks/02_train_and_export_models.ipynb`
 
 It writes one combined modelling table:
 
@@ -18,7 +18,7 @@ missing cells and no duplicate issue-time/horizon keys.
 
 ## Quick start
 
-Create a Python environment and install the dependencies:
+Create a Python environment and install the package, notebook, and test dependencies:
 
 ```powershell
 python -m venv .venv
@@ -26,9 +26,24 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-Open `notebooks/01_build_model_ready_dataset.ipynb` from the repository root and run all cells. The
-notebook downloads any missing public source files into `data/raw/`, preserves those bytes unchanged,
-and rebuilds the processed outputs.
+Run the data notebook first, then run the training notebook. The first downloads any missing public
+source files and rebuilds the combined table. The second trains all seven models and writes the trusted
+bundle to `models/gridtoev_model_bundle.joblib`.
+
+The same training can be run without Jupyter:
+
+```powershell
+python scripts/train_models.py
+```
+
+Start the prediction API:
+
+```powershell
+uvicorn gridtoev.api:app --app-dir src --host 0.0.0.0 --port 8000
+```
+
+Open `http://localhost:8000/docs` for interactive API documentation. A frontend example is available
+in `examples/frontend-prediction.js`.
 
 To run the output checks:
 
@@ -42,6 +57,20 @@ python -m unittest discover -s tests -v
 - `gridtoev_data_dictionary.csv`: column role, unit, source, and data type.
 - `gridtoev_quality_report.json`: row count, coverage, event rates, and quality checks.
 - `source_manifest.csv`: source URLs, local paths, file sizes, and SHA-256 hashes.
+- `models/gridtoev_model_bundle.joblib`: fitted preprocessing and seven prediction models.
+- `models/model_metadata.json`: feature contract, versions, split dates, and model settings.
+- `models/training_metrics.json`: chronological validation and test results.
+
+## Prediction API
+
+- `GET /health`: readiness and model version.
+- `GET /model-info`: training metadata and available dataset time range.
+- `GET /dataset/available-times`: timestamps for a frontend selector.
+- `GET /predict/latest`: both forecast horizons for the latest available issue time.
+- `POST /predict/from-dataset`: one selected historical time and horizon.
+- `POST /predict/features`: a complete live feature snapshot.
+
+See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
 
 ## Modelling structure
 
@@ -80,4 +109,3 @@ and are also flagged. The notebook does not invent unavailable load or wind fore
 
 Raw downloads are excluded from version control to avoid duplicating upstream data. The notebook and
 source manifest make the build reproducible. Review upstream terms before redistributing raw files.
-

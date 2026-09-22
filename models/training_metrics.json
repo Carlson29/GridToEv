@@ -1,0 +1,79 @@
+{
+  "classification": {
+    "validation": {
+      "average_precision": 0.9961091157231159,
+      "brier_score": 0.14702444498718412,
+      "precision": 0.9814814814814815,
+      "recall": 0.9217391304347826,
+      "f1": 0.9506726457399103,
+      "threshold": 0.1,
+      "event_rate": 0.8023255813953488,
+      "roc_auc": 0.9854049445865303
+    },
+    "test": {
+      "average_precision": 0.9995254049749692,
+      "brier_score": 0.00921263939144219,
+      "precision": 0.9932659932659933,
+      "recall": 1.0,
+      "f1": 0.9966216216216216,
+      "threshold": 0.1,
+      "event_rate": 0.6844547563805105,
+      "roc_auc": 0.9990029910269194
+    },
+    "persistence_baseline_test": {
+      "average_precision": 0.9746855689698114,
+      "brier_score": 0.02088167053364269,
+      "precision": 0.9766666666666667,
+      "recall": 0.9932203389830508,
+      "f1": 0.984873949579832,
+      "threshold": 0.5,
+      "event_rate": 0.6844547563805105,
+      "roc_auc": 0.9708748753738784
+    }
+  },
+  "regression": {
+    "dispatch_down_mwh": {
+      "mae": 18.852121249648047,
+      "rmse": 29.211578269387438,
+      "wape": 0.2744957721795779,
+      "actual_total_mwh": 29600.689999999995,
+      "nonzero_rate": 0.6844547563805105
+    },
+    "dispatch_down_ml_only": {
+      "mae": 25.263186048610216,
+      "rmse": 39.631162592021425,
+      "wape": 0.36784389779261917,
+      "actual_total_mwh": 29600.689999999995,
+      "nonzero_rate": 0.6844547563805105
+    },
+    "dispatch_down_persistence_baseline": {
+      "mae": 16.821786542923434,
+      "rmse": 28.148681444312167,
+      "wape": 0.24493314176122252,
+      "actual_total_mwh": 29600.689999999995,
+      "nonzero_rate": 0.6844547563805105
+    },
+    "dispatch_down_ml_blend_weight": 0.4,
+    "curtailment_mwh": {
+      "mae": 1.1610120000930115,
+      "rmse": 6.068326449622456,
+      "wape": null,
+      "actual_total_mwh": 0.0,
+      "nonzero_rate": 0.0
+    },
+    "constraint_mwh": {
+      "mae": 44.32882722928026,
+      "rmse": 70.10906458368576,
+      "wape": 0.6454486208199807,
+      "actual_total_mwh": 29600.689999999995,
+      "nonzero_rate": 0.6844547563805105
+    }
+  },
+  "uncertainty": {
+    "p10_pinball_loss": 6.867909512761022,
+    "p50_pinball_loss": 34.3395475638051,
+    "p90_pinball_loss": 13.47673872382729,
+    "p10_p90_empirical_coverage": 0.7146171693735499,
+    "conformal_interval_adjustment_mwh": 13.986059812125973
+  }
+}
