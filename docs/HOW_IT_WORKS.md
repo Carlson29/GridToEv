@@ -41,33 +41,56 @@ The code never shuffles the observations. It gives the oldest 70% of issue times
 15% to validation, and the newest 15% to testing. This imitates the real task: learn from the past and
 predict the future.
 
-Validation chooses three operating settings:
+Validation and expanding-window backtests choose the operating settings:
 
 - the probability threshold that converts event probability into yes/no;
-- how much weight to give the MWh machine-learning correction versus the latest observed value; and
+- a damped recent trend for each forecast horizon;
+- whether the MWh machine-learning correction improves every historical backtest fold; and
 - how much to widen the P10-P90 uncertainty range so it is better calibrated.
 
 The final test period is not used for those choices.
 
-## 3. Models in the bundle
+## 3. Reproducible benchmark and final-test seal
 
-The event classifier answers, “Is dispatch-down likely?” The MWh model answers, “How much energy is
-at risk?” The curtailment and constraint models split that quantity into system-wide and network-driven
-components. The three quantile models provide a low, middle, and high estimate instead of pretending
-one number is certain.
+`config/benchmark_contract.v1.json` freezes the split fractions, expanding-window folds, release
+thresholds, dataset/model hashes, final-test dates, and expected v1.1.0 metrics. Run:
 
-All models use histogram gradient-boosted trees. In plain language, they combine many small decision
-trees that learn patterns such as “high wind, low demand, and low SNSP headroom usually means greater
-risk.”
+```powershell
+python scripts/run_benchmark.py
+```
 
-## 4. Saved training contract
+The command first rejects unsorted rows, duplicate natural keys, incorrectly aligned targets, and any
+forecast publication or source-vintage timestamp later than `issue_timestamp_utc`. It then fits on the
+training partition and selects the event threshold, horizon-specific trend/blend settings, and interval
+adjustment using only training and validation data. Only after those settings are frozen is the final
+test passed to the scoring function.
+
+The report includes overall, 30/60-minute, positive/no-event, and four rolling-fold results. The CSV
+registry records the data hash, feature contract, model settings, runtime, rolling performance and final
+metrics so future experiments can be compared on exactly the same contract. The benchmark runs in
+memory and does not replace `models/gridtoev_model_bundle.joblib`.
+
+## 4. Models in the bundle
+
+The event classifier answers, “Is dispatch-down likely?” The central MWh forecast projects the latest
+completed dispatch-down value with a damped trend learned separately for 30 and 60 minutes. A boosted-
+tree residual model may adjust that forecast, but only when its adjustment improves every rolling
+backtest fold. The curtailment and constraint models split the quantity into system-wide and network-
+driven components. Three residual quantile models provide low, middle, and high estimates.
+
+The learned components use histogram gradient-boosted trees. In plain language, they combine many
+small decision trees that learn patterns such as “high wind, low demand, and low SNSP headroom usually
+means greater risk.” The damped trend is deliberately simpler because it proved more stable on this
+short dataset.
+
+## 5. Saved training contract
 
 The joblib file stores the fitted preprocessing and estimators together with the exact feature order.
 Metadata stores the dataset hash, model version, package versions, test dates, probability threshold,
 and blend weight. This stops the API from silently rearranging columns or loading an incompatible
 feature set.
 
-## 5. FastAPI serving
+## 6. FastAPI serving
 
 The server loads the model bundle once during startup. A request does not rerun either notebook and
 does not retrain anything. Prediction is therefore quick enough for an interactive frontend.
@@ -80,13 +103,13 @@ The demo endpoints are:
 
 The live integration endpoint is:
 
-- `POST /predict/features`: accept a complete 117-feature snapshot created by a future live data
+- `POST /predict/features`: accept a complete 119-feature snapshot created by a future live data
   ingestion service.
 
 Other useful endpoints are `GET /health`, `GET /model-info`, and the automatic interactive API page at
 `/docs`.
 
-## 6. Prediction response
+## 7. Prediction response
 
 One response includes event probability, yes/no event classification, risk level, total dispatch-down
 MWh, curtailment MWh, constraint MWh, P10/P50/P90 estimates, and recoverable energy under the supplied
@@ -96,7 +119,7 @@ up to the total estimate.
 For a 100 MW flexible load and a 30-minute interval, at most 50 MWh can be redirected. The API returns
 the lower of that 50 MWh capacity and the predicted dispatched-down energy.
 
-## 7. Frontend connection
+## 8. Frontend connection
 
 The browser calls the API with ordinary JSON. The API validates the request and returns ordinary JSON,
 so the frontend can be React, Next.js, Vue, plain JavaScript, or a mobile application. CORS is enabled
@@ -106,9 +129,10 @@ For a hackathon demo, use the dataset endpoints. For a live system, build a sche
 collects the newest EirGrid, ENTSO-E, SEMO, and weather observations, applies the same feature logic,
 then calls `/predict/features`.
 
-## 8. Current limitation
+## 9. Current limitation
 
 The combined dataset covers one fully populated month because the organiser price sample is limited to
-January 2026. Event detection is strong on the held-out period, but the MWh hybrid does not beat pure
-persistence there, and that period contains no positive curtailment examples. The implementation is
-complete and honest about those limits; expanding the training history is the next modelling priority.
+January 2026. The improved MWh forecast beats the older, one-interval-stale persistence baseline on the
+held-out period, but the rolling guardrail gives the boosted-tree residual correction zero weight until
+it proves stable across regimes. The test period contains no positive curtailment examples. Expanding
+the training history remains the next modelling priority.

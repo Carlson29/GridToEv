@@ -3,16 +3,17 @@
 This repository prepares energy data, trains the GridToEV forecasting models, and serves predictions
 through FastAPI. It forecasts renewable dispatch-down in Ireland 30 or 60 minutes ahead.
 
-The two executed notebooks are:
+The notebooks are:
 
 - `notebooks/01_build_model_ready_dataset.ipynb`
 - `notebooks/02_train_and_export_models.ipynb`
+- `notebooks/03_extend_history_and_forecast_vintages.ipynb`
 
 It writes one combined modelling table:
 
 - `data/processed/gridtoev_model_ready.csv`
 
-The current build contains 2,867 rows and 131 columns from 2 January through 31 January 2026. Each
+The current build contains 2,867 rows and 133 columns from 2 January through 31 January 2026. Each
 issue time appears once for the 30-minute horizon and once for the 60-minute horizon. The CSV has no
 missing cells and no duplicate issue-time/horizon keys.
 
@@ -35,6 +36,28 @@ The same training can be run without Jupyter:
 ```powershell
 python scripts/train_models.py
 ```
+
+Reproduce and audit the frozen v1.1.0 benchmark without replacing the production model:
+
+```powershell
+python scripts/run_benchmark.py
+```
+
+That command validates dataset order and publication times, selects operating settings without final-
+test access, scores the sealed test only after selection, verifies the committed hashes and metrics,
+and writes the granular report and experiment registry under `benchmarks/v1.1.0/`.
+
+Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
+
+```powershell
+python scripts/build_extended_data.py --forecast-days 3
+```
+
+The command is resumable: existing raw files are checksum-verified and not downloaded again. It
+builds 2021-present half-hourly system/dispatch history, collects retained SEMO wind, demand, and
+interconnector forecast publications, snapshots the EirGrid solar forecast, and performs backward
+as-of joins for 30- and 60-minute horizons. See `docs/EXTENDED_DATA_PIPELINE.md` for the schema,
+quality gates, current measured coverage, and source limitations.
 
 Start the prediction API:
 
@@ -60,6 +83,16 @@ python -m unittest discover -s tests -v
 - `models/gridtoev_model_bundle.joblib`: fitted preprocessing and seven prediction models.
 - `models/model_metadata.json`: feature contract, versions, split dates, and model settings.
 - `models/training_metrics.json`: chronological validation and test results.
+- `config/benchmark_contract.v1.json`: versioned splits, folds, release gates, hashes, and expected
+  v1.1.0 metrics.
+- `benchmarks/v1.1.0/benchmark_report.json`: aggregate, per-horizon, per-fold, and event-regime results.
+- `benchmarks/v1.1.0/experiment_registry.csv`: machine-readable baseline row for future comparisons.
+- `eirgrid_core_history_30min.csv.gz`: 2021-present half-hourly EirGrid history with availability
+  flags; gzip is read directly by pandas.
+- `forecast_vintages.csv.gz`: long-form target/publication/retrieval-time forecast revisions.
+- `forecast_features_asof_30_60.csv`: leakage-safe 30/60-minute forecast feature matrix.
+- `extended_source_manifest.csv`: provider, report, URL, retrieval time, checksum, row count, schema,
+  and per-file coverage for the extended sources.
 
 ## Prediction API
 
@@ -71,6 +104,13 @@ python -m unittest discover -s tests -v
 - `POST /predict/features`: a complete live feature snapshot.
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
+
+## 48-hour performance sprint
+
+The performance sprint is coordinated in
+[#11](https://github.com/Carlson29/GridToEv/issues/11). The complete schedule, public-data source
+matrix, leakage controls, release targets and issue acceptance criteria are in
+[`docs/48_HOUR_MODEL_PERFORMANCE_PLAN.md`](docs/48_HOUR_MODEL_PERFORMANCE_PLAN.md).
 
 ## Modelling structure
 
@@ -89,16 +129,21 @@ The main targets are:
 
 Feature groups include generation mix, load, price, wind and solar availability, renewable share,
 net load, SNSP headroom, interconnector flows, oversupply, calendar cycles, 30-minute to 24-hour
-lags, ramps, rolling statistics, and lagged dispatch-down history.
+lags, ramps, rolling statistics, the latest completed dispatch-down interval, and older dispatch-down
+history.
 
 ## Leakage controls
 
 - Future labels are shifted by one or two half-hour steps before they are attached to feature rows.
-- Contemporaneous dispatch-down values are excluded from the feature block.
-- Dispatch-down is exposed only through lagged features.
+- The latest completed dispatch-down interval is an issue-time feature; every label is attached to a
+  strictly later target timestamp.
+- Older dispatch-down observations remain as lagged features for trend estimation.
 - Rolling statistics end one complete interval before the issue time.
 - The quality gate verifies timestamp ordering and target accounting.
-- Model evaluation should use chronological splits, never a random train/test split.
+- The benchmark gate rejects shuffled rows, misaligned targets, and feature publication/vintage times
+  later than the model issue time.
+- Model evaluation uses the versioned chronological split and rolling-origin folds, never a random
+  train/test split.
 
 ## Scope and limitations
 
@@ -107,5 +152,6 @@ multi-source table uses that shared January window. Hourly prices are carried fo
 half-hour grid and flagged. Short generation/load gaps are interpolated only across at most one hour
 and are also flagged. The notebook does not invent unavailable load or wind forecasts.
 
-Raw downloads are excluded from version control to avoid duplicating upstream data. The notebook and
-source manifest make the build reproducible. Review upstream terms before redistributing raw files.
+Raw downloads are excluded from version control to avoid duplicating upstream data. Large processed
+tables are stored as deterministic gzip CSV files. The notebook, catalog, and source manifest make the
+build reproducible. Review upstream terms before redistributing raw files.

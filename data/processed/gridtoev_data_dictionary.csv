@@ -58,6 +58,8 @@ weekday_sin,feature,ratio,Derived,float64
 weekday_cos,feature,ratio,Derived,float64
 is_weekend,feature,binary,Derived,int8
 month,feature,integer,Derived calendar,int8
+dispatch_down_mwh_latest_observed,feature,MWh per half-hour,Derived from issue-time or lagged EirGrid labels,float64
+dispatch_down_event_latest_observed,feature,binary,Derived from issue-time or lagged EirGrid labels,int8
 wind_lag_1,feature,MW,Derived rolling/lag feature,float64
 wind_lag_2,feature,MW,Derived rolling/lag feature,float64
 wind_lag_4,feature,MW,Derived rolling/lag feature,float64
@@ -93,14 +95,14 @@ oversupply_lag_12,feature,MW,Derived rolling/lag feature,float64
 oversupply_lag_48,feature,MW,Derived rolling/lag feature,float64
 oversupply_ramp_30m,feature,MW,Derived rolling/lag feature,float64
 oversupply_ramp_60m,feature,MW,Derived rolling/lag feature,float64
-dispatch_down_mwh_lag_1,feature,MWh per half-hour,Derived from lagged EirGrid labels,float64
-dispatch_down_event_lag_1,feature,binary,Derived from lagged EirGrid labels,int8
-dispatch_down_mwh_lag_2,feature,MWh per half-hour,Derived from lagged EirGrid labels,float64
-dispatch_down_event_lag_2,feature,binary,Derived from lagged EirGrid labels,int8
-dispatch_down_mwh_lag_4,feature,MWh per half-hour,Derived from lagged EirGrid labels,float64
-dispatch_down_event_lag_4,feature,binary,Derived from lagged EirGrid labels,int8
-dispatch_down_mwh_lag_48,feature,MWh per half-hour,Derived from lagged EirGrid labels,float64
-dispatch_down_event_lag_48,feature,binary,Derived from lagged EirGrid labels,int8
+dispatch_down_mwh_lag_1,feature,MWh per half-hour,Derived from issue-time or lagged EirGrid labels,float64
+dispatch_down_event_lag_1,feature,binary,Derived from issue-time or lagged EirGrid labels,int8
+dispatch_down_mwh_lag_2,feature,MWh per half-hour,Derived from issue-time or lagged EirGrid labels,float64
+dispatch_down_event_lag_2,feature,binary,Derived from issue-time or lagged EirGrid labels,int8
+dispatch_down_mwh_lag_4,feature,MWh per half-hour,Derived from issue-time or lagged EirGrid labels,float64
+dispatch_down_event_lag_4,feature,binary,Derived from issue-time or lagged EirGrid labels,int8
+dispatch_down_mwh_lag_48,feature,MWh per half-hour,Derived from issue-time or lagged EirGrid labels,float64
+dispatch_down_event_lag_48,feature,binary,Derived from issue-time or lagged EirGrid labels,int8
 wind_rolling_mean_6,feature,MW,Derived rolling/lag feature,float64
 wind_rolling_std_6,feature,MW,Derived rolling/lag feature,float64
 load_rolling_mean_6,feature,MW,Derived rolling/lag feature,float64

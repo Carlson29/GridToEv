@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "model_version": "1.0.0",
-  "trained_at_utc": "2026-09-22T11:32:14.164822+00:00",
+  "model_version": "1.1.0",
+  "trained_at_utc": "2026-09-22T15:35:05.030189+00:00",
   "dataset_path": "data/processed/gridtoev_model_ready.csv",
-  "dataset_sha256": "d1cc2088f2a76dd4e7f1aa6ec95bb83bc0f208deebc6c5baac66951beded3893",
+  "dataset_sha256": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
   "dataset_rows": 2867,
-  "feature_count": 117,
+  "feature_count": 119,
   "feature_columns": [
     "entsoe_fossil_gas_generation_mw",
     "entsoe_fossil_hard_coal_generation_mw",
@@ -65,6 +65,8 @@
     "weekday_cos",
     "is_weekend",
     "month",
+    "dispatch_down_mwh_latest_observed",
+    "dispatch_down_event_latest_observed",
     "wind_lag_1",
     "wind_lag_2",
     "wind_lag_4",
@@ -130,8 +132,15 @@
     60
   ],
   "classification_threshold": 0.1,
-  "dispatch_regression_ml_weight": 0.4,
-  "prediction_interval_adjustment_mwh": 13.986059812125973,
+  "dispatch_trend_alpha_by_horizon": {
+    "30": 0.3500000000000001,
+    "60": 0.4750000000000001
+  },
+  "dispatch_regression_ml_weight_by_horizon": {
+    "30": 0.0,
+    "60": 0.0
+  },
+  "prediction_interval_adjustment_mwh": 5.441746267545682,
   "default_component_shares": {
     "curtailment": 0.28277036284010537,
     "constraint": 0.7172296371598945

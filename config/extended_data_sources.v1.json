@@ -1,0 +1,104 @@
+{
+  "catalog_version": "1.0",
+  "sources": [
+    {
+      "source_id": "eirgrid_system_2020_2021",
+      "provider": "EirGrid",
+      "report": "system",
+      "year": "2020-2021",
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/System-Data-Qtr-Hourly-2020-2021.xlsx",
+      "relative_path": "eirgrid/system/2020-2021/System-Data-Qtr-Hourly-2020-2021.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_system_2022_2023",
+      "provider": "EirGrid",
+      "report": "system",
+      "year": "2022-2023",
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/System-Data-Qtr-Hourly-2022-2023_0.xlsx",
+      "relative_path": "eirgrid/system/2022-2023/System-Data-Qtr-Hourly-2022-2023.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_system_2024",
+      "provider": "EirGrid",
+      "report": "system",
+      "year": 2024,
+      "url": "https://cms.eirgrid.ie/sites/default/files/2025-02/System_Data_Qtr_Hourly_2024.xlsx",
+      "relative_path": "eirgrid/system/2024/System_Data_Qtr_Hourly_2024.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_system_2025",
+      "provider": "EirGrid",
+      "report": "system",
+      "year": 2025,
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/System-Data-Qtr-Hourly-2025-v12.xlsx",
+      "relative_path": "eirgrid/system/2025/System-Data-Qtr-Hourly-2025-v12.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_system_2026",
+      "provider": "EirGrid",
+      "report": "system",
+      "year": 2026,
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/System-Data-Qtr-Hourly-2026-V8.xlsx",
+      "relative_path": "eirgrid/system/2026/System-Data-Qtr-Hourly-2026-V8.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2021",
+      "provider": "EirGrid",
+      "report": "dispatch_down",
+      "year": 2021,
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2021.xlsx",
+      "relative_path": "eirgrid/dispatch_down/2021/DD-HH-2021.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2022",
+      "provider": "EirGrid",
+      "report": "dispatch_down",
+      "year": 2022,
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2022.xlsx",
+      "relative_path": "eirgrid/dispatch_down/2022/DD-HH-2022.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2023",
+      "provider": "EirGrid",
+      "report": "dispatch_down",
+      "year": 2023,
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2023.xlsx",
+      "relative_path": "eirgrid/dispatch_down/2023/DD-HH-2023.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2024",
+      "provider": "EirGrid",
+      "report": "dispatch_down",
+      "year": 2024,
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2024.xlsx",
+      "relative_path": "eirgrid/dispatch_down/2024/DD-HH-2024.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2025",
+      "provider": "EirGrid",
+      "report": "dispatch_down",
+      "year": 2025,
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2025-v10.xlsx",
+      "relative_path": "eirgrid/dispatch_down/2025/DD-HH-2025-v10.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2026",
+      "provider": "EirGrid",
+      "report": "dispatch_down",
+      "year": 2026,
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2026-V9.xlsx",
+      "relative_path": "eirgrid/dispatch_down/2026/DD-HH-2026-V9.xlsx",
+      "licence_note": "Review the EirGrid Open Data Licence and website disclaimer before redistribution."
+    }
+  ]
+}

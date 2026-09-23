@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
 .ipynb_checkpoints/
 .pytest_cache/
 
@@ -8,3 +9,6 @@ __pycache__/
 data/raw/**
 !data/raw/README.md
 
+# Legacy uncompressed outputs are large; the build writes deterministic .csv.gz files.
+data/processed/eirgrid_core_history_30min.csv
+data/processed/forecast_vintages.csv
