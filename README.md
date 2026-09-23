@@ -68,6 +68,17 @@ uvicorn gridtoev.api:app --app-dir src --host 0.0.0.0 --port 8000
 Open `http://localhost:8000/docs` for interactive API documentation. A frontend example is available
 in `examples/frontend-prediction.js`.
 
+For a stable team service, Docker/LAN setup, cloud deployment, API-key configuration, and complete
+PowerShell/Python prediction examples, see
+[`docs/SHARING_AND_PREDICTIONS.md`](docs/SHARING_AND_PREDICTIONS.md).
+
+Run the packaged service locally with Docker:
+
+```powershell
+$env:GRIDTOEV_API_KEY = "choose-a-long-team-key"
+docker compose up --build
+```
+
 To run the output checks:
 
 ```powershell
@@ -96,6 +107,7 @@ python -m unittest discover -s tests -v
 
 ## Prediction API
 
+- `GET /`: service discovery and links.
 - `GET /health`: readiness and model version.
 - `GET /model-info`: training metadata and available dataset time range.
 - `GET /dataset/available-times`: timestamps for a frontend selector.
@@ -104,6 +116,7 @@ python -m unittest discover -s tests -v
 - `POST /predict/features`: a complete live feature snapshot.
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
+Set `GRIDTOEV_API_KEY` on shared deployments; protected routes then require the `X-API-Key` header.
 
 ## 48-hour performance sprint
 

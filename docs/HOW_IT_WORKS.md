@@ -109,6 +109,11 @@ The live integration endpoint is:
 Other useful endpoints are `GET /health`, `GET /model-info`, and the automatic interactive API page at
 `/docs`.
 
+On a shared deployment, setting `GRIDTOEV_API_KEY` protects model information, dataset times, and all
+prediction routes with an `X-API-Key` header. The root page and health check stay public so people and
+the hosting platform can confirm that the service is running. See `SHARING_AND_PREDICTIONS.md` for the
+team workflow and copyable request examples.
+
 ## 7. Prediction response
 
 One response includes event probability, yes/no event classification, risk level, total dispatch-down

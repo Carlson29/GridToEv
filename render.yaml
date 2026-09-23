@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: gridtoev-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: GRIDTOEV_API_KEY
+        sync: false
+      - key: GRIDTOEV_CORS_ORIGINS
+        sync: false

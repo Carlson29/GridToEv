@@ -47,9 +47,15 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["status"], "ready")
 
+        root = self.client.get("/")
+        self.assertEqual(root.status_code, 200)
+        self.assertEqual(root.json()["docs_url"], "/docs")
+
         model_info = self.client.get("/model-info")
         self.assertEqual(model_info.status_code, 200)
         self.assertEqual(model_info.json()["forecast_horizons_minutes"], [30, 60])
+        self.assertEqual(model_info.json()["model_artifact"], "model.joblib")
+        self.assertNotIn("model_path", model_info.json())
 
     def test_predict_from_dataset(self) -> None:
         timestamp = self.data["issue_timestamp_utc"].iloc[-30].isoformat()
@@ -101,6 +107,34 @@ class ApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_optional_api_key_protects_data_and_prediction_routes(self) -> None:
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, api_key="team-secret")) as secured_client:
+            self.assertEqual(secured_client.get("/health").status_code, 200)
+            self.assertEqual(secured_client.get("/").status_code, 200)
+
+            missing = secured_client.get("/predict/latest")
+            self.assertEqual(missing.status_code, 401)
+            self.assertEqual(missing.headers["www-authenticate"], "ApiKey")
+
+            wrong = secured_client.get(
+                "/predict/latest",
+                headers={"X-API-Key": "wrong-secret"},
+            )
+            self.assertEqual(wrong.status_code, 401)
+
+            accepted = secured_client.get(
+                "/predict/latest",
+                headers={"X-API-Key": "team-secret"},
+            )
+            self.assertEqual(accepted.status_code, 200, accepted.text)
+
+            model_info = secured_client.get(
+                "/model-info",
+                headers={"X-API-Key": "team-secret"},
+            )
+            self.assertEqual(model_info.status_code, 200, model_info.text)
 
 
 if __name__ == "__main__":

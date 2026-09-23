@@ -68,7 +68,8 @@ class PredictionService:
     def model_info(self) -> dict[str, Any]:
         info = dict(self.metadata)
         info.pop("feature_columns", None)
-        info["model_path"] = self.model_path.as_posix()
+        # Do not expose an absolute server filesystem path through a public API.
+        info["model_artifact"] = self.model_path.name
         info["dataset_loaded"] = self.dataset is not None
         info["available_issue_timestamp_min_utc"] = None
         info["available_issue_timestamp_max_utc"] = None

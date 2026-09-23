@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from .constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
@@ -59,8 +61,31 @@ def _default_service() -> PredictionService:
     )
 
 
-def create_app(service: PredictionService | None = None) -> FastAPI:
+def create_app(
+    service: PredictionService | None = None,
+    api_key: str | None = None,
+) -> FastAPI:
     prediction_service = service or _default_service()
+    configured_api_key = (
+        api_key if api_key is not None else os.getenv("GRIDTOEV_API_KEY", "")
+    ).strip()
+    api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+    def require_api_key(
+        provided_api_key: str | None = Security(api_key_header),
+    ) -> None:
+        """Require the shared key only when the deployment configured one."""
+        if not configured_api_key:
+            return
+        if provided_api_key is None or not secrets.compare_digest(
+            provided_api_key,
+            configured_api_key,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing or invalid API key",
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -91,6 +116,21 @@ def create_app(service: PredictionService | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.get("/", include_in_schema=False)
+    def root() -> dict[str, Any]:
+        return {
+            "service": "GridToEV Prediction API",
+            "status": "ready" if prediction_service.loaded else "starting",
+            "model_version": (
+                prediction_service.metadata["model_version"]
+                if prediction_service.loaded
+                else None
+            ),
+            "docs_url": "/docs",
+            "health_url": "/health",
+            "api_key_required": bool(configured_api_key),
+        }
+
     @app.get("/health")
     def health() -> dict[str, Any]:
         return {
@@ -99,17 +139,21 @@ def create_app(service: PredictionService | None = None) -> FastAPI:
             "dataset_loaded": prediction_service.dataset is not None,
         }
 
-    @app.get("/model-info")
+    @app.get("/model-info", dependencies=[Depends(require_api_key)])
     def model_info() -> dict[str, Any]:
         return prediction_service.model_info()
 
-    @app.get("/dataset/available-times")
+    @app.get("/dataset/available-times", dependencies=[Depends(require_api_key)])
     def available_times(
         limit: Annotated[int, Query(ge=1, le=1000)] = 96,
     ) -> dict[str, Any]:
         return {"issue_timestamps_utc": prediction_service.available_times(limit)}
 
-    @app.post("/predict/from-dataset", response_model=PredictionResponse)
+    @app.post(
+        "/predict/from-dataset",
+        response_model=PredictionResponse,
+        dependencies=[Depends(require_api_key)],
+    )
     def predict_from_dataset(request: DatasetPredictionRequest) -> dict[str, Any]:
         try:
             return prediction_service.predict_from_dataset(
@@ -122,7 +166,11 @@ def create_app(service: PredictionService | None = None) -> FastAPI:
         except FeatureValidationError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
-    @app.post("/predict/features", response_model=PredictionResponse)
+    @app.post(
+        "/predict/features",
+        response_model=PredictionResponse,
+        dependencies=[Depends(require_api_key)],
+    )
     def predict_features(request: FeaturePredictionRequest) -> dict[str, Any]:
         try:
             return prediction_service.predict_features(
@@ -134,7 +182,11 @@ def create_app(service: PredictionService | None = None) -> FastAPI:
         except FeatureValidationError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
-    @app.get("/predict/latest", response_model=LatestPredictionsResponse)
+    @app.get(
+        "/predict/latest",
+        response_model=LatestPredictionsResponse,
+        dependencies=[Depends(require_api_key)],
+    )
     def predict_latest(
         flexible_load_capacity_mw: Annotated[float, Query(gt=0, le=10000)] = 100.0,
     ) -> dict[str, Any]:
