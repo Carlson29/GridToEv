@@ -72,6 +72,13 @@ python -m unittest discover -s tests -v
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
 
+## 48-hour performance sprint
+
+The performance sprint is coordinated in
+[#11](https://github.com/Carlson29/GridToEv/issues/11). The complete schedule, public-data source
+matrix, leakage controls, release targets and issue acceptance criteria are in
+[`docs/48_HOUR_MODEL_PERFORMANCE_PLAN.md`](docs/48_HOUR_MODEL_PERFORMANCE_PLAN.md).
+
 ## Modelling structure
 
 The natural key is `issue_timestamp_utc` plus `forecast_horizon_minutes`. The target time is stored
