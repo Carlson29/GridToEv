@@ -1,0 +1,145 @@
+{
+  "rows": 287389,
+  "duplicate_vintage_keys": 0,
+  "feature_coverage": {
+    "demand_forecast_mw_all": {
+      "rows": 91968,
+      "vintages": 491,
+      "first_target_utc": "2026-09-20T22:00:00+00:00",
+      "last_target_utc": "2026-09-26T21:30:00+00:00",
+      "first_publication_utc": "2026-09-20T23:05:10+00:00",
+      "last_publication_utc": "2026-09-23T15:05:05+00:00",
+      "forecast_lead_minutes_p50": 2069.8166666666666,
+      "forecast_lead_minutes_p95": 4709.816666666667,
+      "retrieval_lag_minutes_p50": 1994.2166666666667,
+      "retrieval_lag_minutes_p95": 3648.35
+    },
+    "demand_forecast_mw_ni": {
+      "rows": 91968,
+      "vintages": 491,
+      "first_target_utc": "2026-09-20T22:00:00+00:00",
+      "last_target_utc": "2026-09-26T21:30:00+00:00",
+      "first_publication_utc": "2026-09-20T23:05:10+00:00",
+      "last_publication_utc": "2026-09-23T15:05:05+00:00",
+      "forecast_lead_minutes_p50": 2069.8166666666666,
+      "forecast_lead_minutes_p95": 4709.816666666667,
+      "retrieval_lag_minutes_p50": 1994.2166666666667,
+      "retrieval_lag_minutes_p95": 3648.35
+    },
+    "demand_forecast_mw_roi": {
+      "rows": 92112,
+      "vintages": 491,
+      "first_target_utc": "2026-09-20T22:00:00+00:00",
+      "last_target_utc": "2026-09-26T21:30:00+00:00",
+      "first_publication_utc": "2026-09-20T23:05:10+00:00",
+      "last_publication_utc": "2026-09-23T15:05:05+00:00",
+      "forecast_lead_minutes_p50": 2079.733333333333,
+      "forecast_lead_minutes_p95": 4719.816666666667,
+      "retrieval_lag_minutes_p50": 1994.2166666666667,
+      "retrieval_lag_minutes_p95": 3648.35
+    },
+    "interconnector_max_export_mw_nimoyle": {
+      "rows": 216,
+      "vintages": 3,
+      "first_target_utc": "2026-09-20T22:00:00+00:00",
+      "last_target_utc": "2026-09-25T21:00:00+00:00",
+      "first_publication_utc": "2026-09-21T06:00:11+00:00",
+      "last_publication_utc": "2026-09-23T06:00:11+00:00",
+      "forecast_lead_minutes_p50": 1649.8166666666666,
+      "forecast_lead_minutes_p95": 3599.8166666666666,
+      "retrieval_lag_minutes_p50": 1999.9333333333334,
+      "retrieval_lag_minutes_p95": 3439.9333333333334
+    },
+    "interconnector_max_export_mw_roiewic": {
+      "rows": 216,
+      "vintages": 3,
+      "first_target_utc": "2026-09-20T22:00:00+00:00",
+      "last_target_utc": "2026-09-25T21:00:00+00:00",
+      "first_publication_utc": "2026-09-21T06:00:11+00:00",
+      "last_publication_utc": "2026-09-23T06:00:11+00:00",
+      "forecast_lead_minutes_p50": 1649.8166666666666,
+      "forecast_lead_minutes_p95": 3599.8166666666666,
+      "retrieval_lag_minutes_p50": 1999.9333333333334,
+      "retrieval_lag_minutes_p95": 3439.9333333333334
+    },
+    "interconnector_max_export_mw_roigrlk": {
+      "rows": 216,
+      "vintages": 3,
+      "first_target_utc": "2026-09-20T22:00:00+00:00",
+      "last_target_utc": "2026-09-25T21:00:00+00:00",
+      "first_publication_utc": "2026-09-21T06:00:11+00:00",
+      "last_publication_utc": "2026-09-23T06:00:11+00:00",
+      "forecast_lead_minutes_p50": 1649.8166666666666,
+      "forecast_lead_minutes_p95": 3599.8166666666666,
+      "retrieval_lag_minutes_p50": 1999.9333333333334,
+      "retrieval_lag_minutes_p95": 3439.9333333333334
+    },
+    "interconnector_max_import_mw_nimoyle": {
+      "rows": 216,
+      "vintages": 3,
+      "first_target_utc": "2026-09-20T22:00:00+00:00",
+      "last_target_utc": "2026-09-25T21:00:00+00:00",
+      "first_publication_utc": "2026-09-21T06:00:11+00:00",
+      "last_publication_utc": "2026-09-23T06:00:11+00:00",
+      "forecast_lead_minutes_p50": 1649.8166666666666,
+      "forecast_lead_minutes_p95": 3599.8166666666666,
+      "retrieval_lag_minutes_p50": 1999.9333333333334,
+      "retrieval_lag_minutes_p95": 3439.9333333333334
+    },
+    "interconnector_max_import_mw_roiewic": {
+      "rows": 216,
+      "vintages": 3,
+      "first_target_utc": "2026-09-20T22:00:00+00:00",
+      "last_target_utc": "2026-09-25T21:00:00+00:00",
+      "first_publication_utc": "2026-09-21T06:00:11+00:00",
+      "last_publication_utc": "2026-09-23T06:00:11+00:00",
+      "forecast_lead_minutes_p50": 1649.8166666666666,
+      "forecast_lead_minutes_p95": 3599.8166666666666,
+      "retrieval_lag_minutes_p50": 1999.9333333333334,
+      "retrieval_lag_minutes_p95": 3439.9333333333334
+    },
+    "interconnector_max_import_mw_roigrlk": {
+      "rows": 216,
+      "vintages": 3,
+      "first_target_utc": "2026-09-20T22:00:00+00:00",
+      "last_target_utc": "2026-09-25T21:00:00+00:00",
+      "first_publication_utc": "2026-09-21T06:00:11+00:00",
+      "last_publication_utc": "2026-09-23T06:00:11+00:00",
+      "forecast_lead_minutes_p50": 1649.8166666666666,
+      "forecast_lead_minutes_p95": 3599.8166666666666,
+      "retrieval_lag_minutes_p50": 1999.9333333333334,
+      "retrieval_lag_minutes_p95": 3439.9333333333334
+    },
+    "solar_forecast_mw_all": {
+      "rows": 192,
+      "vintages": 1,
+      "first_target_utc": "2026-09-23T00:00:00+00:00",
+      "last_target_utc": "2026-09-24T23:45:00+00:00",
+      "first_publication_utc": "2026-09-23T15:23:12+00:00",
+      "last_publication_utc": "2026-09-23T15:23:12+00:00",
+      "forecast_lead_minutes_p50": 509.29999999999995,
+      "forecast_lead_minutes_p95": 1798.5499999999997,
+      "retrieval_lag_minutes_p50": 0.0,
+      "retrieval_lag_minutes_p95": 0.0
+    },
+    "wind_forecast_mw_all": {
+      "rows": 9853,
+      "vintages": 23,
+      "first_target_utc": "2026-09-20T22:15:00+00:00",
+      "last_target_utc": "2026-09-27T12:45:00+00:00",
+      "first_publication_utc": "2026-09-21T00:04:23+00:00",
+      "last_publication_utc": "2026-09-23T12:23:53+00:00",
+      "forecast_lead_minutes_p50": 2590.7,
+      "forecast_lead_minutes_p95": 5480.986666666667,
+      "retrieval_lag_minutes_p50": 1988.7166666666667,
+      "retrieval_lag_minutes_p95": 3783.65
+    }
+  },
+  "dataset": "data/processed/forecast_vintages.csv.gz",
+  "requested_date_from": "2026-09-21",
+  "requested_date_to": "2026-09-23",
+  "source_limitations": {
+    "semo_retention": "The API returns only each report's retained archive; coverage is reported exactly rather than backfilled or inferred.",
+    "solar_publication_time": "The Smart Grid Dashboard does not expose historical solar publication times, so retrieval time is used as the conservative availability time and snapshots accumulate on future runs."
+  }
+}

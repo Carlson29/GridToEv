@@ -1,0 +1,25 @@
+{
+  "dataset": "data/processed/forecast_features_asof_30_60.csv",
+  "rows": 636,
+  "forecast_horizons_minutes": [
+    30,
+    60
+  ],
+  "first_issue_utc": "2026-09-20T21:00:00+00:00",
+  "last_issue_utc": "2026-09-27T12:00:00+00:00",
+  "future_publication_violations": 0,
+  "availability_rate_by_feature": {
+    "demand_forecast_mw_all": 0.8915094339622641,
+    "demand_forecast_mw_ni": 0.8915094339622641,
+    "demand_forecast_mw_roi": 0.8915094339622641,
+    "interconnector_max_export_mw_nimoyle": 0.3474842767295597,
+    "interconnector_max_export_mw_roiewic": 0.3474842767295597,
+    "interconnector_max_export_mw_roigrlk": 0.3474842767295597,
+    "interconnector_max_import_mw_nimoyle": 0.3474842767295597,
+    "interconnector_max_import_mw_roiewic": 0.3474842767295597,
+    "interconnector_max_import_mw_roigrlk": 0.3474842767295597,
+    "solar_forecast_mw_all": 0.19968553459119498,
+    "wind_forecast_mw_all": 0.9795597484276729,
+    "history_label": 0.0
+  }
+}

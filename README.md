@@ -3,10 +3,11 @@
 This repository prepares energy data, trains the GridToEV forecasting models, and serves predictions
 through FastAPI. It forecasts renewable dispatch-down in Ireland 30 or 60 minutes ahead.
 
-The two executed notebooks are:
+The notebooks are:
 
 - `notebooks/01_build_model_ready_dataset.ipynb`
 - `notebooks/02_train_and_export_models.ipynb`
+- `notebooks/03_extend_history_and_forecast_vintages.ipynb`
 
 It writes one combined modelling table:
 
@@ -46,6 +47,18 @@ That command validates dataset order and publication times, selects operating se
 test access, scores the sealed test only after selection, verifies the committed hashes and metrics,
 and writes the granular report and experiment registry under `benchmarks/v1.1.0/`.
 
+Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
+
+```powershell
+python scripts/build_extended_data.py --forecast-days 3
+```
+
+The command is resumable: existing raw files are checksum-verified and not downloaded again. It
+builds 2021-present half-hourly system/dispatch history, collects retained SEMO wind, demand, and
+interconnector forecast publications, snapshots the EirGrid solar forecast, and performs backward
+as-of joins for 30- and 60-minute horizons. See `docs/EXTENDED_DATA_PIPELINE.md` for the schema,
+quality gates, current measured coverage, and source limitations.
+
 Start the prediction API:
 
 ```powershell
@@ -74,6 +87,12 @@ python -m unittest discover -s tests -v
   v1.1.0 metrics.
 - `benchmarks/v1.1.0/benchmark_report.json`: aggregate, per-horizon, per-fold, and event-regime results.
 - `benchmarks/v1.1.0/experiment_registry.csv`: machine-readable baseline row for future comparisons.
+- `eirgrid_core_history_30min.csv.gz`: 2021-present half-hourly EirGrid history with availability
+  flags; gzip is read directly by pandas.
+- `forecast_vintages.csv.gz`: long-form target/publication/retrieval-time forecast revisions.
+- `forecast_features_asof_30_60.csv`: leakage-safe 30/60-minute forecast feature matrix.
+- `extended_source_manifest.csv`: provider, report, URL, retrieval time, checksum, row count, schema,
+  and per-file coverage for the extended sources.
 
 ## Prediction API
 
@@ -133,5 +152,6 @@ multi-source table uses that shared January window. Hourly prices are carried fo
 half-hour grid and flagged. Short generation/load gaps are interpolated only across at most one hour
 and are also flagged. The notebook does not invent unavailable load or wind forecasts.
 
-Raw downloads are excluded from version control to avoid duplicating upstream data. The notebook and
-source manifest make the build reproducible. Review upstream terms before redistributing raw files.
+Raw downloads are excluded from version control to avoid duplicating upstream data. Large processed
+tables are stored as deterministic gzip CSV files. The notebook, catalog, and source manifest make the
+build reproducible. Review upstream terms before redistributing raw files.

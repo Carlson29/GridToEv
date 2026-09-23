@@ -8,3 +8,7 @@ __pycache__/
 # Raw public downloads are reproducible from the notebook and may change upstream.
 data/raw/**
 !data/raw/README.md
+
+# Legacy uncompressed outputs are large; the build writes deterministic .csv.gz files.
+data/processed/eirgrid_core_history_30min.csv
+data/processed/forecast_vintages.csv
