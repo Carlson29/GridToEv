@@ -91,6 +91,9 @@ python -m unittest discover -s tests -v
   flags; gzip is read directly by pandas.
 - `forecast_vintages.csv.gz`: long-form target/publication/retrieval-time forecast revisions.
 - `forecast_features_asof_30_60.csv`: leakage-safe 30/60-minute forecast feature matrix.
+- `forecast_model_features_30_60.csv`: causal forecast-error, renewable-state and grid-headroom table.
+- `forecast_model_feature_dictionary.csv`: formula, source, unit and availability rule for every column.
+- `forecast_model_feature_quality_report.json`: Issue #4 leakage, key, coverage and missingness checks.
 - `extended_source_manifest.csv`: provider, report, URL, retrieval time, checksum, row count, schema,
   and per-file coverage for the extended sources.
 
@@ -104,6 +107,7 @@ python -m unittest discover -s tests -v
 - `POST /predict/features`: a complete live feature snapshot.
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
+See `docs/FORECAST_FEATURE_ENGINEERING.md` for the Issue #4 feature formulas and leakage controls.
 
 ## 48-hour performance sprint
 
