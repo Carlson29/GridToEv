@@ -37,6 +37,7 @@ from .constants import (
     IDENTIFIER_COLUMNS,
     MODEL_VERSION,
     PROJECT_ROOT,
+    ROLLING_ORIGIN_WINDOWS,
     SUPPORTED_FORECAST_HORIZONS,
     TARGET_COLUMNS,
 )
@@ -61,6 +62,16 @@ class TrainingResult:
     artifact_path: Path
     metrics_path: Path
     metadata_path: Path
+
+
+@dataclass(frozen=True)
+class OperatingPolicy:
+    """Settings selected from development data before the final test is scored."""
+
+    classification_threshold: float
+    dispatch_trend_alpha_by_horizon: dict[str, float]
+    dispatch_ml_weight_by_horizon: dict[str, float]
+    prediction_interval_adjustment_mwh: float
 
 
 def _sha256(path: Path) -> str:
@@ -396,7 +407,7 @@ def _rolling_dispatch_backtest(
     fold_ids: list[np.ndarray] = []
 
     for fold, (train_end_fraction, score_end_fraction) in enumerate(
-        ((0.40, 0.60), (0.60, 0.80), (0.80, 1.00))
+        ROLLING_ORIGIN_WINDOWS
     ):
         train_end = max(1, int(len(unique_times) * train_end_fraction))
         score_end = max(train_end + 1, int(len(unique_times) * score_end_fraction))
@@ -444,34 +455,16 @@ def _blend_dispatch_predictions(
     return blended, trend
 
 
-def _evaluate_models(
+def _select_operating_policy(
     models: dict[str, Pipeline],
     train: pd.DataFrame,
     validation: pd.DataFrame,
-    test: pd.DataFrame,
     columns: list[str],
     config: TrainingConfig,
-) -> tuple[dict[str, Any], float, dict[str, float], dict[str, float], float]:
+) -> OperatingPolicy:
+    """Select thresholds, blend weights, and calibration without final-test access."""
     validation_probabilities = models["event_classifier"].predict_proba(validation[columns])[:, 1]
     threshold = _select_threshold(validation["dispatch_down_event"], validation_probabilities)
-    test_probabilities = models["event_classifier"].predict_proba(test[columns])[:, 1]
-
-    classification = {
-        "validation": _classification_metrics(
-            validation["dispatch_down_event"], validation_probabilities, threshold
-        ),
-        "test": _classification_metrics(test["dispatch_down_event"], test_probabilities, threshold),
-        "latest_observation_baseline_test": _classification_metrics(
-            test["dispatch_down_event"],
-            test["dispatch_down_event_latest_observed"].to_numpy(dtype=float),
-            0.5,
-        ),
-        "stale_persistence_baseline_test": _classification_metrics(
-            test["dispatch_down_event"],
-            test["dispatch_down_event_lag_1"].to_numpy(dtype=float),
-            0.5,
-        ),
-    }
 
     strategy_frame, strategy_ml, strategy_fold_ids = _rolling_dispatch_backtest(
         models,
@@ -486,43 +479,6 @@ def _evaluate_models(
         strategy_frame,
         strategy_fold_ids,
     )
-    test_ml = _dispatch_ml_prediction(models, test, columns)
-    test_hybrid, test_trend = _blend_dispatch_predictions(
-        test,
-        test_ml,
-        dispatch_trend_alpha,
-        dispatch_ml_weight,
-    )
-    test_latest = test["dispatch_down_mwh_latest_observed"].to_numpy(dtype=float)
-    test_stale_persistence = test["dispatch_down_mwh_lag_1"].to_numpy(dtype=float)
-
-    regression: dict[str, Any] = {
-        "dispatch_down_mwh": _regression_metrics(test["dispatch_down_mwh"], test_hybrid),
-        "dispatch_down_ml_only": _regression_metrics(test["dispatch_down_mwh"], test_ml),
-        "dispatch_down_trend_baseline": _regression_metrics(
-            test["dispatch_down_mwh"], test_trend
-        ),
-        "dispatch_down_latest_observation_baseline": _regression_metrics(
-            test["dispatch_down_mwh"], test_latest
-        ),
-        "dispatch_down_stale_persistence_baseline": _regression_metrics(
-            test["dispatch_down_mwh"], test_stale_persistence
-        ),
-        "dispatch_down_trend_alpha_by_horizon": dispatch_trend_alpha,
-        "dispatch_down_ml_weight_by_horizon": dispatch_ml_weight,
-    }
-    for target, model_name in (
-        ("curtailment_mwh", "curtailment_regressor"),
-        ("constraint_mwh", "constraint_regressor"),
-    ):
-        regression[target] = _regression_metrics(
-            test[target], models[model_name].predict(test[columns])
-        )
-
-    quantile_predictions = {
-        quantile: _dispatch_quantile_prediction(models, test, columns, quantile)
-        for quantile in ("p10", "p50", "p90")
-    }
     validation_p10 = _dispatch_quantile_prediction(models, validation, columns, "p10")
     validation_p90 = _dispatch_quantile_prediction(models, validation, columns, "p90")
     validation_lower = np.minimum(validation_p10, validation_p90)
@@ -533,20 +489,114 @@ def _evaluate_models(
     )
     interval_adjustment = float(np.quantile(nonconformity, 0.80, method="higher"))
 
-    lower = np.maximum(np.minimum.reduce(list(quantile_predictions.values())) - interval_adjustment, 0.0)
+    return OperatingPolicy(
+        classification_threshold=threshold,
+        dispatch_trend_alpha_by_horizon=dispatch_trend_alpha,
+        dispatch_ml_weight_by_horizon=dispatch_ml_weight,
+        prediction_interval_adjustment_mwh=interval_adjustment,
+    )
+
+
+def _score_models(
+    models: dict[str, Pipeline],
+    validation: pd.DataFrame,
+    final_test: pd.DataFrame,
+    columns: list[str],
+    policy: OperatingPolicy,
+) -> dict[str, Any]:
+    """Score a frozen operating policy on the final test without selecting settings."""
+    validation_probabilities = models["event_classifier"].predict_proba(validation[columns])[:, 1]
+    final_test_probabilities = models["event_classifier"].predict_proba(final_test[columns])[:, 1]
+    threshold = policy.classification_threshold
+
+    classification = {
+        "validation": _classification_metrics(
+            validation["dispatch_down_event"], validation_probabilities, threshold
+        ),
+        "test": _classification_metrics(
+            final_test["dispatch_down_event"], final_test_probabilities, threshold
+        ),
+        "latest_observation_baseline_test": _classification_metrics(
+            final_test["dispatch_down_event"],
+            final_test["dispatch_down_event_latest_observed"].to_numpy(dtype=float),
+            0.5,
+        ),
+        "stale_persistence_baseline_test": _classification_metrics(
+            final_test["dispatch_down_event"],
+            final_test["dispatch_down_event_lag_1"].to_numpy(dtype=float),
+            0.5,
+        ),
+    }
+
+    final_test_ml = _dispatch_ml_prediction(models, final_test, columns)
+    final_test_hybrid, final_test_trend = _blend_dispatch_predictions(
+        final_test,
+        final_test_ml,
+        policy.dispatch_trend_alpha_by_horizon,
+        policy.dispatch_ml_weight_by_horizon,
+    )
+    final_test_latest = final_test["dispatch_down_mwh_latest_observed"].to_numpy(dtype=float)
+    final_test_stale_persistence = final_test["dispatch_down_mwh_lag_1"].to_numpy(dtype=float)
+
+    regression: dict[str, Any] = {
+        "dispatch_down_mwh": _regression_metrics(
+            final_test["dispatch_down_mwh"], final_test_hybrid
+        ),
+        "dispatch_down_ml_only": _regression_metrics(
+            final_test["dispatch_down_mwh"], final_test_ml
+        ),
+        "dispatch_down_trend_baseline": _regression_metrics(
+            final_test["dispatch_down_mwh"], final_test_trend
+        ),
+        "dispatch_down_latest_observation_baseline": _regression_metrics(
+            final_test["dispatch_down_mwh"], final_test_latest
+        ),
+        "dispatch_down_stale_persistence_baseline": _regression_metrics(
+            final_test["dispatch_down_mwh"], final_test_stale_persistence
+        ),
+        "dispatch_down_trend_alpha_by_horizon": policy.dispatch_trend_alpha_by_horizon,
+        "dispatch_down_ml_weight_by_horizon": policy.dispatch_ml_weight_by_horizon,
+    }
+    for target, model_name in (
+        ("curtailment_mwh", "curtailment_regressor"),
+        ("constraint_mwh", "constraint_regressor"),
+    ):
+        regression[target] = _regression_metrics(
+            final_test[target], models[model_name].predict(final_test[columns])
+        )
+
+    quantile_predictions = {
+        quantile: _dispatch_quantile_prediction(models, final_test, columns, quantile)
+        for quantile in ("p10", "p50", "p90")
+    }
+
+    interval_adjustment = policy.prediction_interval_adjustment_mwh
+    lower = np.maximum(
+        np.minimum.reduce(list(quantile_predictions.values())) - interval_adjustment,
+        0.0,
+    )
     upper = np.maximum.reduce(list(quantile_predictions.values())) + interval_adjustment
     quantiles = {
         "p10_pinball_loss": float(
-            mean_pinball_loss(test["dispatch_down_mwh"], quantile_predictions["p10"], alpha=0.10)
+            mean_pinball_loss(
+                final_test["dispatch_down_mwh"], quantile_predictions["p10"], alpha=0.10
+            )
         ),
         "p50_pinball_loss": float(
-            mean_pinball_loss(test["dispatch_down_mwh"], quantile_predictions["p50"], alpha=0.50)
+            mean_pinball_loss(
+                final_test["dispatch_down_mwh"], quantile_predictions["p50"], alpha=0.50
+            )
         ),
         "p90_pinball_loss": float(
-            mean_pinball_loss(test["dispatch_down_mwh"], quantile_predictions["p90"], alpha=0.90)
+            mean_pinball_loss(
+                final_test["dispatch_down_mwh"], quantile_predictions["p90"], alpha=0.90
+            )
         ),
         "p10_p90_empirical_coverage": float(
-            ((test["dispatch_down_mwh"].to_numpy() >= lower) & (test["dispatch_down_mwh"].to_numpy() <= upper)).mean()
+            (
+                (final_test["dispatch_down_mwh"].to_numpy() >= lower)
+                & (final_test["dispatch_down_mwh"].to_numpy() <= upper)
+            ).mean()
         ),
         "conformal_interval_adjustment_mwh": interval_adjustment,
     }
@@ -554,7 +604,26 @@ def _evaluate_models(
         "classification": classification,
         "regression": regression,
         "uncertainty": quantiles,
-    }, threshold, dispatch_trend_alpha, dispatch_ml_weight, interval_adjustment
+    }
+
+
+def _evaluate_models(
+    models: dict[str, Pipeline],
+    train: pd.DataFrame,
+    validation: pd.DataFrame,
+    test: pd.DataFrame,
+    columns: list[str],
+    config: TrainingConfig,
+) -> tuple[dict[str, Any], float, dict[str, float], dict[str, float], float]:
+    policy = _select_operating_policy(models, train, validation, columns, config)
+    metrics = _score_models(models, validation, test, columns, policy)
+    return (
+        metrics,
+        policy.classification_threshold,
+        policy.dispatch_trend_alpha_by_horizon,
+        policy.dispatch_ml_weight_by_horizon,
+        policy.prediction_interval_adjustment_mwh,
+    )
 
 
 def _partition_metadata(frame: pd.DataFrame) -> dict[str, Any]:

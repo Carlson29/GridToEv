@@ -1,0 +1,514 @@
+{
+  "contract": {
+    "baseline_model_version": "1.1.0",
+    "contract_id": "dispatch-down-benchmark-v1",
+    "final_test_policy": "score_only_after_candidate_selection",
+    "release_thresholds": {
+      "final_test_average_precision_min": 0.995,
+      "final_test_mae_mwh_max": 9.5,
+      "final_test_p10_p90_coverage_max": 0.9,
+      "final_test_p10_p90_coverage_min": 0.78,
+      "final_test_p50_pinball_loss_max": 6.0,
+      "final_test_rmse_mwh_max": 18.0,
+      "final_test_wape_max": 0.14,
+      "rolling_mae_improvement_min": 0.15
+    },
+    "schema_version": 1
+  },
+  "final_test": {
+    "dispatch_breakdown": {
+      "by_event_regime": {
+        "no_dispatch_down": {
+          "actual_total_mwh": 0.0,
+          "mae": 0.02873419117647058,
+          "nonzero_rate": 0.0,
+          "rmse": 0.2344206811560713,
+          "wape": null
+        },
+        "positive_dispatch_down": {
+          "actual_total_mwh": 29600.689999999995,
+          "mae": 17.263317033898304,
+          "nonzero_rate": 1.0,
+          "rmse": 24.887615197279423,
+          "wape": 0.17204593963856923
+        }
+      },
+      "by_horizon": {
+        "30": {
+          "actual_total_mwh": 14826.284,
+          "mae": 8.639045370370368,
+          "nonzero_rate": 0.6851851851851852,
+          "rmse": 14.945301414132105,
+          "wape": 0.1258598445841183
+        },
+        "60": {
+          "actual_total_mwh": 14774.405999999999,
+          "mae": 15.025825930232557,
+          "nonzero_rate": 0.6837209302325581,
+          "rmse": 25.00998166363474,
+          "wape": 0.2186587112199299
+        }
+      },
+      "overall": {
+        "actual_total_mwh": 29600.689999999995,
+        "mae": 11.825026392111367,
+        "nonzero_rate": 0.6844547563805105,
+        "rmse": 20.590388344414013,
+        "wape": 0.1721779585205615
+      }
+    },
+    "metrics": {
+      "classification": {
+        "latest_observation_baseline_test": {
+          "average_precision": 0.9811959394244429,
+          "brier_score": 0.016241299303944315,
+          "event_rate": 0.6844547563805105,
+          "f1": 0.9881956155143339,
+          "precision": 0.9832214765100671,
+          "recall": 0.9932203389830508,
+          "roc_auc": 0.9782278165503491,
+          "threshold": 0.5
+        },
+        "stale_persistence_baseline_test": {
+          "average_precision": 0.9746855689698114,
+          "brier_score": 0.02088167053364269,
+          "event_rate": 0.6844547563805105,
+          "f1": 0.984873949579832,
+          "precision": 0.9766666666666667,
+          "recall": 0.9932203389830508,
+          "roc_auc": 0.9708748753738784,
+          "threshold": 0.5
+        },
+        "test": {
+          "average_precision": 0.9997946125572869,
+          "brier_score": 0.009674369032176576,
+          "event_rate": 0.6844547563805105,
+          "f1": 0.98989898989899,
+          "precision": 0.9832775919732442,
+          "recall": 0.9966101694915255,
+          "roc_auc": 0.9995513459621137,
+          "threshold": 0.1
+        },
+        "validation": {
+          "average_precision": 0.9988452146770432,
+          "brier_score": 0.042370077908933705,
+          "event_rate": 0.8023255813953488,
+          "f1": 0.9781021897810219,
+          "precision": 0.9852941176470589,
+          "recall": 0.9710144927536232,
+          "roc_auc": 0.9952600170502983,
+          "threshold": 0.1
+        }
+      },
+      "regression": {
+        "constraint_mwh": {
+          "actual_total_mwh": 29600.689999999995,
+          "mae": 41.91367380104561,
+          "nonzero_rate": 0.6844547563805105,
+          "rmse": 66.75598219444092,
+          "wape": 0.6102828484150424
+        },
+        "curtailment_mwh": {
+          "actual_total_mwh": 0.0,
+          "mae": 0.902806066703265,
+          "nonzero_rate": 0.0,
+          "rmse": 4.542113205530731,
+          "wape": null
+        },
+        "dispatch_down_latest_observation_baseline": {
+          "actual_total_mwh": 29600.689999999995,
+          "mae": 12.04750812064965,
+          "nonzero_rate": 0.6844547563805105,
+          "rmse": 20.71200779981912,
+          "wape": 0.17541739736472362
+        },
+        "dispatch_down_ml_only": {
+          "actual_total_mwh": 29600.689999999995,
+          "mae": 21.81293014088448,
+          "nonzero_rate": 0.6844547563805105,
+          "rmse": 35.082750529235156,
+          "wape": 0.3176065453447609
+        },
+        "dispatch_down_ml_weight_by_horizon": {
+          "30": 0.0,
+          "60": 0.0
+        },
+        "dispatch_down_mwh": {
+          "actual_total_mwh": 29600.689999999995,
+          "mae": 11.825026392111367,
+          "nonzero_rate": 0.6844547563805105,
+          "rmse": 20.590388344414013,
+          "wape": 0.1721779585205615
+        },
+        "dispatch_down_stale_persistence_baseline": {
+          "actual_total_mwh": 29600.689999999995,
+          "mae": 16.821786542923434,
+          "nonzero_rate": 0.6844547563805105,
+          "rmse": 28.148681444312167,
+          "wape": 0.24493314176122252
+        },
+        "dispatch_down_trend_alpha_by_horizon": {
+          "30": 0.3500000000000001,
+          "60": 0.4750000000000001
+        },
+        "dispatch_down_trend_baseline": {
+          "actual_total_mwh": 29600.689999999995,
+          "mae": 11.825026392111367,
+          "nonzero_rate": 0.6844547563805105,
+          "rmse": 20.590388344414013,
+          "wape": 0.1721779585205615
+        }
+      },
+      "uncertainty": {
+        "conformal_interval_adjustment_mwh": 5.441746267545682,
+        "p10_p90_empirical_coverage": 0.7447795823665894,
+        "p10_pinball_loss": 3.1579167814735887,
+        "p50_pinball_loss": 6.997638705530516,
+        "p90_pinball_loss": 4.238504673277315
+      }
+    },
+    "scored_after_policy_frozen": true,
+    "sealed_during_selection": true
+  },
+  "frozen_baseline_verification": {
+    "enabled": true,
+    "passed": true
+  },
+  "partitions": {
+    "final_test": {
+      "issue_timestamp_max_utc": "2026-01-31T22:30:00+00:00",
+      "issue_timestamp_min_utc": "2026-01-27T11:00:00+00:00",
+      "rows": 431
+    },
+    "train": {
+      "issue_timestamp_max_utc": "2026-01-22T22:00:00+00:00",
+      "issue_timestamp_min_utc": "2026-01-02T00:00:00+00:00",
+      "rows": 2006
+    },
+    "validation": {
+      "issue_timestamp_max_utc": "2026-01-27T10:30:00+00:00",
+      "issue_timestamp_min_utc": "2026-01-22T22:30:00+00:00",
+      "rows": 430
+    }
+  },
+  "rolling_origin": {
+    "aggregate": {
+      "by_event_regime": {
+        "no_dispatch_down": {
+          "actual_total_mwh": 0.0,
+          "mae": 0.038240752625437566,
+          "nonzero_rate": 0.0,
+          "rmse": 0.5197538138448546,
+          "wape": null
+        },
+        "positive_dispatch_down": {
+          "actual_total_mwh": 83238.429,
+          "mae": 20.717568018018017,
+          "nonzero_rate": 1.0,
+          "rmse": 36.67926029857265,
+          "wape": 0.19339084775374604
+        }
+      },
+      "by_horizon": {
+        "30": {
+          "actual_total_mwh": 41587.458,
+          "mae": 7.235664565483476,
+          "nonzero_rate": 0.4749082007343941,
+          "rmse": 17.7745039958236,
+          "wape": 0.14214713363822334
+        },
+        "60": {
+          "actual_total_mwh": 41650.971000000005,
+          "mae": 12.507692441860462,
+          "nonzero_rate": 0.47613219094247244,
+          "rmse": 31.045930762890713,
+          "wape": 0.24534325322211567
+        }
+      },
+      "overall": {
+        "actual_total_mwh": 83238.429,
+        "mae": 9.871678503671971,
+        "nonzero_rate": 0.4755201958384333,
+        "rmse": 25.29607488556034,
+        "wape": 0.19378456403832417
+      }
+    },
+    "folds": [
+      {
+        "dispatch_breakdown": {
+          "by_event_regime": {
+            "no_dispatch_down": {
+              "actual_total_mwh": 0.0,
+              "mae": 0.042443646408839776,
+              "nonzero_rate": 0.0,
+              "rmse": 0.4613232534174344,
+              "wape": null
+            },
+            "positive_dispatch_down": {
+              "actual_total_mwh": 46529.487,
+              "mae": 28.878945205479432,
+              "nonzero_rate": 1.0,
+              "rmse": 45.67308134442483,
+              "wape": 0.13592432256990059
+            }
+          },
+          "by_horizon": {
+            "30": {
+              "actual_total_mwh": 23148.97,
+              "mae": 11.448965499999995,
+              "nonzero_rate": 0.545,
+              "rmse": 23.236774302860443,
+              "wape": 0.09891555002231196
+            },
+            "60": {
+              "actual_total_mwh": 23380.517000000003,
+              "mae": 20.21189099999999,
+              "nonzero_rate": 0.55,
+              "rmse": 41.76659149331909,
+              "wape": 0.17289515881962736
+            }
+          },
+          "overall": {
+            "actual_total_mwh": 46529.487,
+            "mae": 15.830428249999994,
+            "nonzero_rate": 0.5475,
+            "rmse": 33.796418781964675,
+            "wape": 0.13608942862404644
+          }
+        },
+        "fit": {
+          "issue_timestamp_max_utc": "2026-01-10T08:00:00+00:00",
+          "issue_timestamp_min_utc": "2026-01-02T00:00:00+00:00",
+          "rows": 802
+        },
+        "name": "train_fold_1",
+        "score": {
+          "issue_timestamp_max_utc": "2026-01-14T12:00:00+00:00",
+          "issue_timestamp_min_utc": "2026-01-10T08:30:00+00:00",
+          "rows": 400
+        }
+      },
+      {
+        "dispatch_breakdown": {
+          "by_event_regime": {
+            "no_dispatch_down": {
+              "actual_total_mwh": 0.0,
+              "mae": 0.00809059888579386,
+              "nonzero_rate": 0.0,
+              "rmse": 0.10731132364666557,
+              "wape": null
+            },
+            "positive_dispatch_down": {
+              "actual_total_mwh": 2220.804,
+              "mae": 19.58014883720931,
+              "nonzero_rate": 1.0,
+              "rmse": 30.719377149566316,
+              "wape": 0.3791178330010214
+            }
+          },
+          "by_horizon": {
+            "30": {
+              "actual_total_mwh": 1221.1600000000003,
+              "mae": 1.4565480099502492,
+              "nonzero_rate": 0.10945273631840796,
+              "rmse": 7.292232043323167,
+              "wape": 0.23974430050116285
+            },
+            "60": {
+              "actual_total_mwh": 999.6440000000001,
+              "mae": 2.746690422885573,
+              "nonzero_rate": 0.1044776119402985,
+              "rmse": 12.195316276590743,
+              "wape": 0.552281387173834
+            }
+          },
+          "overall": {
+            "actual_total_mwh": 2220.804,
+            "mae": 2.1016192164179115,
+            "nonzero_rate": 0.10696517412935323,
+            "rmse": 10.047447120033732,
+            "wape": 0.380425703934251
+          }
+        },
+        "fit": {
+          "issue_timestamp_max_utc": "2026-01-14T12:00:00+00:00",
+          "issue_timestamp_min_utc": "2026-01-02T00:00:00+00:00",
+          "rows": 1202
+        },
+        "name": "train_fold_2",
+        "score": {
+          "issue_timestamp_max_utc": "2026-01-18T17:30:00+00:00",
+          "issue_timestamp_min_utc": "2026-01-14T12:30:00+00:00",
+          "rows": 402
+        }
+      },
+      {
+        "dispatch_breakdown": {
+          "by_event_regime": {
+            "no_dispatch_down": {
+              "actual_total_mwh": 0.0,
+              "mae": 0.05563933189655172,
+              "nonzero_rate": 0.0,
+              "rmse": 0.7346311455509288,
+              "wape": null
+            },
+            "positive_dispatch_down": {
+              "actual_total_mwh": 9971.144000000002,
+              "mae": 18.01046544117647,
+              "nonzero_rate": 1.0,
+              "rmse": 34.1831633119242,
+              "wape": 0.3070639763100402
+            }
+          },
+          "by_horizon": {
+            "30": {
+              "actual_total_mwh": 4985.572,
+              "mae": 5.496783582089553,
+              "nonzero_rate": 0.4228855721393035,
+              "rmse": 15.79402863327881,
+              "wape": 0.22161017833059077
+            },
+            "60": {
+              "actual_total_mwh": 4985.572,
+              "mae": 9.800168905472638,
+              "nonzero_rate": 0.4228855721393035,
+              "rmse": 27.192748355190677,
+              "wape": 0.39510691050094154
+            }
+          },
+          "overall": {
+            "actual_total_mwh": 9971.144,
+            "mae": 7.648476243781095,
+            "nonzero_rate": 0.4228855721393035,
+            "rmse": 22.23619688230832,
+            "wape": 0.30835854441576616
+          }
+        },
+        "fit": {
+          "issue_timestamp_max_utc": "2026-01-18T17:30:00+00:00",
+          "issue_timestamp_min_utc": "2026-01-02T00:00:00+00:00",
+          "rows": 1604
+        },
+        "name": "train_fold_3",
+        "score": {
+          "issue_timestamp_max_utc": "2026-01-22T22:00:00+00:00",
+          "issue_timestamp_min_utc": "2026-01-18T18:00:00+00:00",
+          "rows": 402
+        }
+      },
+      {
+        "dispatch_breakdown": {
+          "by_event_regime": {
+            "no_dispatch_down": {
+              "actual_total_mwh": 0.0,
+              "mae": 0.10914323529411764,
+              "nonzero_rate": 0.0,
+              "rmse": 0.8653634738932128,
+              "wape": null
+            },
+            "positive_dispatch_down": {
+              "actual_total_mwh": 24516.994000000006,
+              "mae": 17.01256760869565,
+              "nonzero_rate": 1.0,
+              "rmse": 31.818738263027143,
+              "wape": 0.23939867281445673
+            }
+          },
+          "by_horizon": {
+            "30": {
+              "actual_total_mwh": 12231.756000000001,
+              "mae": 10.344768372093025,
+              "nonzero_rate": 0.8,
+              "rmse": 20.380051006342367,
+              "wape": 0.1818320443932989
+            },
+            "60": {
+              "actual_total_mwh": 12285.238000000001,
+              "mae": 16.99761767441861,
+              "nonzero_rate": 0.8046511627906977,
+              "rmse": 34.77858440892868,
+              "wape": 0.2974698414471092
+            }
+          },
+          "overall": {
+            "actual_total_mwh": 24516.994000000002,
+            "mae": 13.671193023255814,
+            "nonzero_rate": 0.8023255813953488,
+            "rmse": 28.503477090612066,
+            "wape": 0.23977707054951353
+          }
+        },
+        "fit": {
+          "issue_timestamp_max_utc": "2026-01-22T22:00:00+00:00",
+          "issue_timestamp_min_utc": "2026-01-02T00:00:00+00:00",
+          "rows": 2006
+        },
+        "name": "validation_fold",
+        "score": {
+          "issue_timestamp_max_utc": "2026-01-27T10:30:00+00:00",
+          "issue_timestamp_min_utc": "2026-01-22T22:30:00+00:00",
+          "rows": 430
+        }
+      }
+    ],
+    "include_validation_fold": true,
+    "windows": [
+      [
+        0.4,
+        0.6
+      ],
+      [
+        0.6,
+        0.8
+      ],
+      [
+        0.8,
+        1.0
+      ]
+    ]
+  },
+  "run": {
+    "dataset_path": "data/processed/gridtoev_model_ready.csv",
+    "dataset_sha256": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
+    "feature_count": 119,
+    "feature_groups": [
+      "current_model_feature_contract"
+    ],
+    "kind": "frozen_baseline_reproduction",
+    "model_version": "1.1.0",
+    "rollback_artifact_path": "models/gridtoev_model_bundle.joblib",
+    "rollback_artifact_sha256": "c5ce8f01b25ac4df186aca66cc154be9097b2c5529a8a89e1a9b78302d9d427f",
+    "run_id": "dispatch-down-benchmark-v1:1.1.0:92341680d618",
+    "runtime_seconds": 30.45558309997432,
+    "training_config": {
+      "l2_regularization": 1.0,
+      "learning_rate": 0.05,
+      "max_iter": 180,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 20,
+      "random_state": 42,
+      "train_fraction": 0.7,
+      "validation_fraction": 0.15
+    }
+  },
+  "schema_version": 1,
+  "selection": {
+    "final_test_labels_available": false,
+    "inputs": [
+      "train",
+      "validation"
+    ],
+    "operating_policy": {
+      "classification_threshold": 0.1,
+      "dispatch_ml_weight_by_horizon": {
+        "30": 0.0,
+        "60": 0.0
+      },
+      "dispatch_trend_alpha_by_horizon": {
+        "30": 0.3500000000000001,
+        "60": 0.4750000000000001
+      },
+      "prediction_interval_adjustment_mwh": 5.441746267545682
+    }
+  }
+}

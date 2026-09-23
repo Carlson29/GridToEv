@@ -36,6 +36,16 @@ The same training can be run without Jupyter:
 python scripts/train_models.py
 ```
 
+Reproduce and audit the frozen v1.1.0 benchmark without replacing the production model:
+
+```powershell
+python scripts/run_benchmark.py
+```
+
+That command validates dataset order and publication times, selects operating settings without final-
+test access, scores the sealed test only after selection, verifies the committed hashes and metrics,
+and writes the granular report and experiment registry under `benchmarks/v1.1.0/`.
+
 Start the prediction API:
 
 ```powershell
@@ -60,6 +70,10 @@ python -m unittest discover -s tests -v
 - `models/gridtoev_model_bundle.joblib`: fitted preprocessing and seven prediction models.
 - `models/model_metadata.json`: feature contract, versions, split dates, and model settings.
 - `models/training_metrics.json`: chronological validation and test results.
+- `config/benchmark_contract.v1.json`: versioned splits, folds, release gates, hashes, and expected
+  v1.1.0 metrics.
+- `benchmarks/v1.1.0/benchmark_report.json`: aggregate, per-horizon, per-fold, and event-regime results.
+- `benchmarks/v1.1.0/experiment_registry.csv`: machine-readable baseline row for future comparisons.
 
 ## Prediction API
 
@@ -107,7 +121,10 @@ history.
 - Older dispatch-down observations remain as lagged features for trend estimation.
 - Rolling statistics end one complete interval before the issue time.
 - The quality gate verifies timestamp ordering and target accounting.
-- Model evaluation should use chronological splits, never a random train/test split.
+- The benchmark gate rejects shuffled rows, misaligned targets, and feature publication/vintage times
+  later than the model issue time.
+- Model evaluation uses the versioned chronological split and rolling-origin folds, never a random
+  train/test split.
 
 ## Scope and limitations
 

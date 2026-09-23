@@ -10,6 +10,7 @@ DEFAULT_METADATA_PATH = PROJECT_ROOT / "models" / "model_metadata.json"
 MODEL_VERSION = "1.1.0"
 SUPPORTED_FORECAST_HORIZONS = (30, 60)
 INTERVAL_HOURS = 0.5
+ROLLING_ORIGIN_WINDOWS = ((0.40, 0.60), (0.60, 0.80), (0.80, 1.00))
 
 IDENTIFIER_COLUMNS = {
     "issue_timestamp_utc",

@@ -50,7 +50,27 @@ Validation and expanding-window backtests choose the operating settings:
 
 The final test period is not used for those choices.
 
-## 3. Models in the bundle
+## 3. Reproducible benchmark and final-test seal
+
+`config/benchmark_contract.v1.json` freezes the split fractions, expanding-window folds, release
+thresholds, dataset/model hashes, final-test dates, and expected v1.1.0 metrics. Run:
+
+```powershell
+python scripts/run_benchmark.py
+```
+
+The command first rejects unsorted rows, duplicate natural keys, incorrectly aligned targets, and any
+forecast publication or source-vintage timestamp later than `issue_timestamp_utc`. It then fits on the
+training partition and selects the event threshold, horizon-specific trend/blend settings, and interval
+adjustment using only training and validation data. Only after those settings are frozen is the final
+test passed to the scoring function.
+
+The report includes overall, 30/60-minute, positive/no-event, and four rolling-fold results. The CSV
+registry records the data hash, feature contract, model settings, runtime, rolling performance and final
+metrics so future experiments can be compared on exactly the same contract. The benchmark runs in
+memory and does not replace `models/gridtoev_model_bundle.joblib`.
+
+## 4. Models in the bundle
 
 The event classifier answers, “Is dispatch-down likely?” The central MWh forecast projects the latest
 completed dispatch-down value with a damped trend learned separately for 30 and 60 minutes. A boosted-
@@ -63,14 +83,14 @@ small decision trees that learn patterns such as “high wind, low demand, and l
 means greater risk.” The damped trend is deliberately simpler because it proved more stable on this
 short dataset.
 
-## 4. Saved training contract
+## 5. Saved training contract
 
 The joblib file stores the fitted preprocessing and estimators together with the exact feature order.
 Metadata stores the dataset hash, model version, package versions, test dates, probability threshold,
 and blend weight. This stops the API from silently rearranging columns or loading an incompatible
 feature set.
 
-## 5. FastAPI serving
+## 6. FastAPI serving
 
 The server loads the model bundle once during startup. A request does not rerun either notebook and
 does not retrain anything. Prediction is therefore quick enough for an interactive frontend.
@@ -89,7 +109,7 @@ The live integration endpoint is:
 Other useful endpoints are `GET /health`, `GET /model-info`, and the automatic interactive API page at
 `/docs`.
 
-## 6. Prediction response
+## 7. Prediction response
 
 One response includes event probability, yes/no event classification, risk level, total dispatch-down
 MWh, curtailment MWh, constraint MWh, P10/P50/P90 estimates, and recoverable energy under the supplied
@@ -99,7 +119,7 @@ up to the total estimate.
 For a 100 MW flexible load and a 30-minute interval, at most 50 MWh can be redirected. The API returns
 the lower of that 50 MWh capacity and the predicted dispatched-down energy.
 
-## 7. Frontend connection
+## 8. Frontend connection
 
 The browser calls the API with ordinary JSON. The API validates the request and returns ordinary JSON,
 so the frontend can be React, Next.js, Vue, plain JavaScript, or a mobile application. CORS is enabled
@@ -109,7 +129,7 @@ For a hackathon demo, use the dataset endpoints. For a live system, build a sche
 collects the newest EirGrid, ENTSO-E, SEMO, and weather observations, applies the same feature logic,
 then calls `/predict/features`.
 
-## 8. Current limitation
+## 9. Current limitation
 
 The combined dataset covers one fully populated month because the organiser price sample is limited to
 January 2026. The improved MWh forecast beats the older, one-interval-stale persistence baseline on the
