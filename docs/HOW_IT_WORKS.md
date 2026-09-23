@@ -102,7 +102,7 @@ The demo endpoints are:
 - `GET /dataset/available-times`: list times the frontend can offer in a picker.
 - `GET /dataset/info`: explain the valid date range and exact UTC timestamp format.
 - `POST /predict/window/from-dataset`: replay 30/60-minute predictions every half-hour over a
-  selected 0.5-24 hour historical window and return an ordered array.
+  selected 0.5-48 hour historical window and return an ordered array.
 
 The live integration endpoint is:
 
@@ -113,10 +113,10 @@ Other useful endpoints are `GET /health`, `GET /model-info`, and the automatic i
 `/docs`.
 
 The window endpoint is deliberately labelled `historical_rolling_short_horizon`. For example, a
-24-hour request runs the existing 30/60-minute models at each half-hour whose feature row already
+48-hour request runs the existing 30/60-minute models at each half-hour whose feature row already
 exists in the historical dataset. It does not turn the current model into a true day-ahead model.
-Training real 2-hour and 24-hour horizons requires causally available forecast features and separate
-horizon evaluation.
+Training real 2-hour, 24-hour, and 48-hour horizons requires causally available forecast features and
+separate horizon evaluation.
 
 On a shared deployment, setting `GRIDTOEV_API_KEY` protects model information, dataset times, and all
 prediction routes with an `X-API-Key` header. The root page and health check stay public so people and

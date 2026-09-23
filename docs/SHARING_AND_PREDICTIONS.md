@@ -76,9 +76,9 @@ python -m gridtoev.server
    forecasts for the newest row in the bundled demonstration dataset.
 4. To choose an historical interval, call `GET /dataset/available-times`, copy one timestamp, then
    send it to `POST /predict/from-dataset` with a horizon of `30` or `60`.
-5. For an array covering the next 2 hours or next day of historical issue times, call
+5. For an array covering 2, 24, or up to 48 hours of historical issue times, call
    `POST /predict/window/from-dataset`, supply a valid `start_timestamp_utc`, and use
-   `duration_hours: 2` or `24`.
+   `duration_hours: 2`, `24`, or `48`.
 
 The bundled data is historical, so `latest` means the newest timestamp in that file, not live grid
 conditions. True live prediction requires a separate collector to create the full feature snapshot
@@ -101,13 +101,13 @@ only saying “not found.”
 ```
 
 Send this body to `POST /predict/window/from-dataset`. A 2-hour request returns four half-hour issue
-times, or eight prediction objects when both horizons are selected. A 24-hour request returns 48 issue
-times, or 96 prediction objects with both horizons. The response also includes a separate summary for
-each horizon so totals are not accidentally double-counted.
+times, or eight prediction objects when both horizons are selected. A 48-hour request returns 96 issue
+times, or 192 prediction objects with both horizons. The response also includes a separate summary
+for each horizon so totals are not accidentally double-counted.
 
 This is a rolling historical replay: every item is still a 30- or 60-minute forecast using the feature
 row available at that item's issue time. It is useful for charts, demonstrations, and backtesting, but
-it is not a single forecast made 2 or 24 hours ahead.
+it is not a single forecast made 2, 24, or 48 hours ahead.
 
 ## Make a prediction from PowerShell
 

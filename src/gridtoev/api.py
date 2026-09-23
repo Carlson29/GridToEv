@@ -59,10 +59,10 @@ class DatasetWindowPredictionRequest(BaseModel):
     duration_hours: float = Field(
         default=2.0,
         ge=0.5,
-        le=24,
+        le=48,
         multiple_of=0.5,
-        description="Window length from 0.5 to 24 hours, in half-hour increments.",
-        examples=[2, 24],
+        description="Window length from 0.5 to 48 hours, in half-hour increments.",
+        examples=[2, 24, 48],
     )
     forecast_horizons_minutes: list[ForecastHorizon] = Field(
         default_factory=lambda: [30, 60],
@@ -293,7 +293,7 @@ def create_app(
         summary="Return an array of rolling historical short-horizon predictions",
         description=(
             "Starting at a valid dataset timestamp, calculate 30- and/or 60-minute "
-            "predictions every half-hour for up to 24 hours. This is a historical rolling "
+            "predictions every half-hour for up to 48 hours. This is a historical rolling "
             "replay, not a single multi-hour or day-ahead forecast."
         ),
     )

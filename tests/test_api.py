@@ -173,19 +173,20 @@ class ApiTests(unittest.TestCase):
         ]
         self.assertEqual(order, sorted(order))
 
-    def test_one_day_window_and_out_of_range_guidance(self) -> None:
+    def test_two_day_window_and_out_of_range_guidance(self) -> None:
         issue_times = self.data["issue_timestamp_utc"].drop_duplicates().sort_values()
         issue_times = issue_times.reset_index(drop=True)
         valid = self.client.post(
             "/predict/window/from-dataset",
             json={
                 "start_timestamp_utc": issue_times.iloc[5].isoformat(),
-                "duration_hours": 24,
+                "duration_hours": 48,
                 "forecast_horizons_minutes": [30],
             },
         )
         self.assertEqual(valid.status_code, 200, valid.text)
-        self.assertEqual(valid.json()["prediction_count"], 48)
+        self.assertEqual(valid.json()["prediction_count"], 96)
+        self.assertEqual(valid.json()["duration_hours"], 48)
 
         invalid = self.client.post(
             "/predict/window/from-dataset",

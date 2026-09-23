@@ -114,7 +114,7 @@ python -m unittest discover -s tests -v
 - `GET /dataset/available-times`: valid timestamps plus the same date guidance for a frontend selector.
 - `GET /predict/latest`: both forecast horizons for the latest available issue time.
 - `POST /predict/from-dataset`: one selected historical time and horizon.
-- `POST /predict/window/from-dataset`: ordered 0.5-24 hour historical rolling prediction array.
+- `POST /predict/window/from-dataset`: ordered 0.5-48 hour historical rolling prediction array.
 - `POST /predict/features`: a complete live feature snapshot.
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.

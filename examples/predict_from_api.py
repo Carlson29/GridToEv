@@ -40,7 +40,7 @@ def main() -> None:
     parser.add_argument(
         "--duration-hours",
         type=float,
-        help="Return a rolling historical window from --timestamp (0.5 to 24 hours)",
+        help="Return a rolling historical window from --timestamp (0.5 to 48 hours)",
     )
     parser.add_argument(
         "--horizons",
