@@ -76,10 +76,38 @@ python -m gridtoev.server
    forecasts for the newest row in the bundled demonstration dataset.
 4. To choose an historical interval, call `GET /dataset/available-times`, copy one timestamp, then
    send it to `POST /predict/from-dataset` with a horizon of `30` or `60`.
+5. For an array covering the next 2 hours or next day of historical issue times, call
+   `POST /predict/window/from-dataset`, supply a valid `start_timestamp_utc`, and use
+   `duration_hours: 2` or `24`.
 
 The bundled data is historical, so `latest` means the newest timestamp in that file, not live grid
 conditions. True live prediction requires a separate collector to create the full feature snapshot
 accepted by `POST /predict/features`.
+
+Before displaying a date picker, call `GET /dataset/info`. It returns the minimum and maximum date,
+the exact `YYYY-MM-DDTHH:MM:SSZ` format, the valid `:00`/`:30` minute alignment, and supported
+horizons. If a timestamp is unavailable, the API returns the range and nearest timestamps rather than
+only saying “not found.”
+
+### Two-hour or one-day historical window
+
+```json
+{
+  "start_timestamp_utc": "2026-01-15T12:00:00Z",
+  "duration_hours": 2,
+  "forecast_horizons_minutes": [30, 60],
+  "flexible_load_capacity_mw": 100
+}
+```
+
+Send this body to `POST /predict/window/from-dataset`. A 2-hour request returns four half-hour issue
+times, or eight prediction objects when both horizons are selected. A 24-hour request returns 48 issue
+times, or 96 prediction objects with both horizons. The response also includes a separate summary for
+each horizon so totals are not accidentally double-counted.
+
+This is a rolling historical replay: every item is still a 30- or 60-minute forecast using the feature
+row available at that item's issue time. It is useful for charts, demonstrations, and backtesting, but
+it is not a single forecast made 2 or 24 hours ahead.
 
 ## Make a prediction from PowerShell
 
@@ -128,6 +156,17 @@ python examples/predict_from_api.py `
   --api-key YOUR-TEAM-KEY `
   --timestamp 2026-01-31T22:00:00Z `
   --horizon 30
+```
+
+For a two-hour prediction array:
+
+```powershell
+python examples/predict_from_api.py `
+  --base-url https://YOUR-SERVICE.onrender.com `
+  --api-key YOUR-TEAM-KEY `
+  --timestamp 2026-01-15T12:00:00Z `
+  --duration-hours 2 `
+  --horizons 30 60
 ```
 
 Frontend code can use `examples/frontend-prediction.js`. Do not put a valuable secret in public

@@ -37,9 +37,36 @@ def main() -> None:
     parser.add_argument("--capacity-mw", type=float, default=100.0)
     parser.add_argument("--timestamp", help="Historical issue time, for example 2026-01-31T22:00:00Z")
     parser.add_argument("--horizon", type=int, choices=(30, 60), default=30)
+    parser.add_argument(
+        "--duration-hours",
+        type=float,
+        help="Return a rolling historical window from --timestamp (0.5 to 24 hours)",
+    )
+    parser.add_argument(
+        "--horizons",
+        type=int,
+        choices=(30, 60),
+        nargs="+",
+        default=[30, 60],
+        help="Horizons included in a rolling window",
+    )
     args = parser.parse_args()
 
-    if args.timestamp:
+    if args.duration_hours is not None:
+        if not args.timestamp:
+            parser.error("--timestamp is required with --duration-hours")
+        result = request_json(
+            args.base_url,
+            "/predict/window/from-dataset",
+            args.api_key,
+            {
+                "start_timestamp_utc": args.timestamp,
+                "duration_hours": args.duration_hours,
+                "forecast_horizons_minutes": args.horizons,
+                "flexible_load_capacity_mw": args.capacity_mw,
+            },
+        )
+    elif args.timestamp:
         result = request_json(
             args.base_url,
             "/predict/from-dataset",

@@ -57,6 +57,19 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(model_info.json()["model_artifact"], "model.joblib")
         self.assertNotIn("model_path", model_info.json())
 
+        dataset_info = self.client.get("/dataset/info")
+        self.assertEqual(dataset_info.status_code, 200, dataset_info.text)
+        info = dataset_info.json()
+        self.assertEqual(info["timezone"], "UTC")
+        self.assertEqual(info["interval_minutes"], 30)
+        self.assertEqual(info["supported_forecast_horizons_minutes"], [30, 60])
+        self.assertIn("T", info["timestamp_example"])
+        self.assertTrue(info["timestamp_example"].endswith("Z"))
+        self.assertLess(
+            info["available_issue_timestamp_min_utc"],
+            info["available_issue_timestamp_max_utc"],
+        )
+
     def test_predict_from_dataset(self) -> None:
         timestamp = self.data["issue_timestamp_utc"].iloc[-30].isoformat()
         response = self.client.post(
@@ -107,6 +120,85 @@ class ApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 404)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["error"], "dataset_timestamp_not_available")
+        self.assertIn("expected_format", detail)
+        self.assertIn("available_issue_timestamp_min_utc", detail)
+        self.assertIn("nearest_before_utc", detail)
+
+    def test_dataset_timestamp_requires_timezone(self) -> None:
+        response = self.client.post(
+            "/predict/from-dataset",
+            json={
+                "issue_timestamp_utc": "2026-01-01T10:30:00",
+                "forecast_horizon_minutes": 30,
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("timezone", response.text.lower())
+
+    def test_openapi_documents_date_guidance_and_window_endpoint(self) -> None:
+        schema = self.client.get("/openapi.json").json()
+        self.assertIn("/dataset/info", schema["paths"])
+        self.assertIn("/predict/window/from-dataset", schema["paths"])
+        request_schema = schema["components"]["schemas"]["DatasetPredictionRequest"]
+        timestamp_schema = request_schema["properties"]["issue_timestamp_utc"]
+        self.assertEqual(timestamp_schema["format"], "date-time")
+        self.assertIn("/dataset/info", timestamp_schema["description"])
+        self.assertEqual(timestamp_schema["examples"], ["2026-01-15T12:30:00Z"])
+
+    def test_two_hour_window_returns_ordered_array_and_horizon_summaries(self) -> None:
+        issue_times = self.data["issue_timestamp_utc"].drop_duplicates().sort_values()
+        issue_times = issue_times.reset_index(drop=True)
+        start = issue_times.iloc[20]
+        response = self.client.post(
+            "/predict/window/from-dataset",
+            json={
+                "start_timestamp_utc": start.isoformat(),
+                "duration_hours": 2,
+                "forecast_horizons_minutes": [30, 60],
+                "flexible_load_capacity_mw": 100,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["semantics"], "historical_rolling_short_horizon")
+        self.assertEqual(body["prediction_count"], 8)
+        self.assertEqual(len(body["predictions"]), 8)
+        self.assertEqual(set(body["summary_by_horizon"]), {"30", "60"})
+        self.assertEqual(body["summary_by_horizon"]["30"]["interval_count"], 4)
+        order = [
+            (item["issue_timestamp_utc"], item["forecast_horizon_minutes"])
+            for item in body["predictions"]
+        ]
+        self.assertEqual(order, sorted(order))
+
+    def test_one_day_window_and_out_of_range_guidance(self) -> None:
+        issue_times = self.data["issue_timestamp_utc"].drop_duplicates().sort_values()
+        issue_times = issue_times.reset_index(drop=True)
+        valid = self.client.post(
+            "/predict/window/from-dataset",
+            json={
+                "start_timestamp_utc": issue_times.iloc[5].isoformat(),
+                "duration_hours": 24,
+                "forecast_horizons_minutes": [30],
+            },
+        )
+        self.assertEqual(valid.status_code, 200, valid.text)
+        self.assertEqual(valid.json()["prediction_count"], 48)
+
+        invalid = self.client.post(
+            "/predict/window/from-dataset",
+            json={
+                "start_timestamp_utc": issue_times.iloc[-2].isoformat(),
+                "duration_hours": 2,
+                "forecast_horizons_minutes": [30, 60],
+            },
+        )
+        self.assertEqual(invalid.status_code, 404)
+        detail = invalid.json()["detail"]
+        self.assertEqual(detail["error"], "dataset_window_not_available")
+        self.assertIn("latest_valid_start_utc_for_duration", detail)
 
     def test_optional_api_key_protects_data_and_prediction_routes(self) -> None:
         service = PredictionService(self.artifact_path, self.dataset_path)

@@ -7,6 +7,19 @@ function requestHeaders(apiKey, includeJson = false) {
   };
 }
 
+export async function getDatasetInfo({
+  apiBaseUrl = DEFAULT_API_BASE_URL,
+  apiKey = "",
+} = {}) {
+  const response = await fetch(`${apiBaseUrl}/dataset/info`, {
+    headers: requestHeaders(apiKey),
+  });
+  if (!response.ok) {
+    throw new Error(`GridToEV dataset lookup failed: ${await response.text()}`);
+  }
+  return response.json();
+}
+
 export async function getLatestPredictions(
   flexibleLoadCapacityMw = 100,
   { apiBaseUrl = DEFAULT_API_BASE_URL, apiKey = "" } = {},
@@ -40,6 +53,30 @@ export async function predictHistoricalInterval({
   });
   if (!response.ok) {
     throw new Error(`GridToEV prediction failed: ${await response.text()}`);
+  }
+  return response.json();
+}
+
+export async function predictHistoricalWindow({
+  startTimestampUtc,
+  durationHours = 2,
+  forecastHorizonsMinutes = [30, 60],
+  flexibleLoadCapacityMw = 100,
+  apiBaseUrl = DEFAULT_API_BASE_URL,
+  apiKey = "",
+}) {
+  const response = await fetch(`${apiBaseUrl}/predict/window/from-dataset`, {
+    method: "POST",
+    headers: requestHeaders(apiKey, true),
+    body: JSON.stringify({
+      start_timestamp_utc: startTimestampUtc,
+      duration_hours: durationHours,
+      forecast_horizons_minutes: forecastHorizonsMinutes,
+      flexible_load_capacity_mw: flexibleLoadCapacityMw,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`GridToEV window prediction failed: ${await response.text()}`);
   }
   return response.json();
 }

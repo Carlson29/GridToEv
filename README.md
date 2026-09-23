@@ -110,9 +110,11 @@ python -m unittest discover -s tests -v
 - `GET /`: service discovery and links.
 - `GET /health`: readiness and model version.
 - `GET /model-info`: training metadata and available dataset time range.
-- `GET /dataset/available-times`: timestamps for a frontend selector.
+- `GET /dataset/info`: exact date range, required UTC format, interval, and forecast semantics.
+- `GET /dataset/available-times`: valid timestamps plus the same date guidance for a frontend selector.
 - `GET /predict/latest`: both forecast horizons for the latest available issue time.
 - `POST /predict/from-dataset`: one selected historical time and horizon.
+- `POST /predict/window/from-dataset`: ordered 0.5-24 hour historical rolling prediction array.
 - `POST /predict/features`: a complete live feature snapshot.
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
