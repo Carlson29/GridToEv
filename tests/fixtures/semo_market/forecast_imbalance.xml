@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<OutboundData DatasetName="PUB_HrlyForecastImbalance" PublishTime="2026-09-23T21:00:00">
+  <PUB_HrlyForecastImbalance ROW="1" StartTime="2026-09-23T22:00:00" EndTime="2026-09-23T22:30:00" TotalPN="3900" NetInterconnectorSchedule="100" TSODemandForecast="4600" TSORenewableForecastPD="500" TSORenewableForecastNPDR="0" CalculatedImbalance="100" />
+</OutboundData>

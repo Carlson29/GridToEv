@@ -59,3 +59,11 @@ The reproducible final-test result is:
 
 Future candidate rows should retain the same `contract_id`. A new contract version is required if the
 dataset, folds, final-test period, metric definitions, or leakage rules intentionally change.
+
+## SEMO market-signal ablation
+
+Issue #5 records its named feature-family decision under `semo_market_signals/`. The retained SEMO
+high-frequency archive does not overlap the frozen January 2026 labelled benchmark, so the current
+record has null metrics, does not access the final test, and excludes the family from production. This
+explicit rejection avoids claiming an improvement from non-overlapping data and can be replaced by a
+measured candidate after enough overlapping publication vintages and labels have accumulated.

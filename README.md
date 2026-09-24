@@ -8,6 +8,7 @@ The notebooks are:
 - `notebooks/01_build_model_ready_dataset.ipynb`
 - `notebooks/02_train_and_export_models.ipynb`
 - `notebooks/03_extend_history_and_forecast_vintages.ipynb`
+- `notebooks/05_build_semo_market_signals.ipynb`
 
 It writes one combined modelling table:
 
@@ -59,6 +60,16 @@ interconnector forecast publications, snapshots the EirGrid solar forecast, and 
 as-of joins for 30- and 60-minute horizons. See `docs/EXTENDED_DATA_PIPELINE.md` for the schema,
 quality gates, current measured coverage, and source limitations.
 
+Build the SEMO market and operational signal family:
+
+```powershell
+python scripts/build_semo_market_data.py --days 2 --workers 12
+```
+
+This produces auditable, publication-time-safe schedule, PN, forecast-imbalance, NTC, lagged
+imbalance-price, reserve, and SSII/SIFF features. See `docs/SEMO_MARKET_SIGNALS.md` for the full data
+contract, outputs, leakage controls, and current ablation decision.
+
 Start the prediction API:
 
 ```powershell
@@ -96,6 +107,12 @@ python -m unittest discover -s tests -v
 - `forecast_model_feature_quality_report.json`: Issue #4 leakage, key, coverage and missingness checks.
 - `extended_source_manifest.csv`: provider, report, URL, retrieval time, checksum, row count, schema,
   and per-file coverage for the extended sources.
+- `semo_market_signals.csv.gz`: normalized long-form SEMO market and operational signals.
+- `semo_market_features_asof_30_60.csv`: leakage-safe SEMO features for each issue time and horizon.
+- `semo_market_feature_dictionary.csv`: complete SEMO feature definitions and availability rules.
+- `semo_market_source_manifest.csv`: source URL, retrieval timestamp, checksum, schema, and coverage.
+- `semo_market_quality_report.json`: per-report coverage, staleness, missingness, and leakage checks.
+- `benchmarks/semo_market_signals/ablation_report.json`: named feature-family evaluation decision.
 
 ## Prediction API
 

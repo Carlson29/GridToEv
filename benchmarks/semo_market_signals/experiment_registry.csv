@@ -1,0 +1,2 @@
+experiment_name,feature_group,signal_dataset_sha256,overlap_rows,status,production_decision,reason
+semo_market_operational_signals,semo_imbalance_schedule_pn_ntc,c2e52690e5dda19a960f25176938c15d6b8077b6a2591e76796da2833f590abe,0,rejected_no_temporal_overlap,exclude,"The retained SEMO archive does not overlap the frozen labelled benchmark, so performance cannot be estimated without fabricating historical vintages."
