@@ -1,0 +1,91 @@
+{
+  "experiment_name": "outage_constraint_signals",
+  "feature_group": "generation_transmission_outage_and_ecp_constraint_pressure",
+  "feature_artifact": "data/processed/outage_constraint_features_30_60.csv",
+  "feature_artifact_sha256": "fcca42a5d83af14d07bc83ba3525698ddd1ed9d0f113e3f662cf593c9fab27d3",
+  "overlap_rows": 2867,
+  "development_rows": 2436,
+  "development_fold_count": 4,
+  "candidate_feature_count": 30,
+  "candidate_features": [
+    "generation_source_available_flag",
+    "generation_snapshot_age_hours",
+    "transmission_source_available_flag",
+    "transmission_snapshot_age_hours",
+    "ecp_source_available_flag",
+    "generation_planned_unavailable_mw",
+    "generation_forced_unavailable_mw",
+    "generation_derated_unavailable_mw",
+    "generation_total_unavailable_mw",
+    "generation_active_outage_count",
+    "generation_active_planned_count",
+    "generation_active_forced_count",
+    "generation_largest_unavailable_unit_mw",
+    "generation_hours_to_next_outage_start",
+    "generation_hours_to_first_active_outage_end",
+    "transmission_active_outage_count",
+    "transmission_active_scheduled_count",
+    "transmission_voltage_weighted_pressure",
+    "transmission_largest_voltage_kv",
+    "transmission_hours_to_next_outage_start",
+    "transmission_hours_to_first_active_outage_end",
+    "transmission_active_outage_count_area_south_west",
+    "transmission_active_outage_count_south_east",
+    "transmission_active_outage_count_north_west",
+    "transmission_active_outage_count_north_east",
+    "transmission_active_outage_count_dublin",
+    "transmission_active_outage_count_cork",
+    "generation_outage_missing_flag",
+    "transmission_outage_missing_flag",
+    "ecp_constraint_missing_flag"
+  ],
+  "model": "hist_gradient_boosting_dispatch_residual",
+  "selection_gate": {
+    "mean_mae_improvement_min": 0.15,
+    "maximum_fold_degradation": 0.0
+  },
+  "metrics": {
+    "folds": [
+      {
+        "fold": "train_rolling_1",
+        "fit_rows": 802,
+        "score_rows": 400,
+        "baseline_mae_mwh": 23.422916286747878,
+        "candidate_mae_mwh": 23.045923771665045,
+        "mae_improvement_fraction": 0.01609502892242868
+      },
+      {
+        "fold": "train_rolling_2",
+        "fit_rows": 1202,
+        "score_rows": 402,
+        "baseline_mae_mwh": 2.2008774645649014,
+        "candidate_mae_mwh": 2.2359979181891037,
+        "mae_improvement_fraction": -0.015957477955795833
+      },
+      {
+        "fold": "train_rolling_3",
+        "fit_rows": 1604,
+        "score_rows": 402,
+        "baseline_mae_mwh": 9.559334993123278,
+        "candidate_mae_mwh": 15.130164661050767,
+        "mae_improvement_fraction": -0.5827633064365869
+      },
+      {
+        "fold": "validation",
+        "fit_rows": 2006,
+        "score_rows": 430,
+        "baseline_mae_mwh": 15.00448640915832,
+        "candidate_mae_mwh": 14.593402937347001,
+        "mae_improvement_fraction": 0.027397370399856184
+      }
+    ],
+    "mean_baseline_mae_mwh": 12.546903788398593,
+    "mean_candidate_mae_mwh": 13.751372322062979,
+    "mean_mae_improvement_fraction": -0.13880709626752447,
+    "worst_fold_improvement_fraction": -0.5827633064365869
+  },
+  "status": "rejected_development_gate",
+  "production_decision": "exclude",
+  "reason": "Candidate did not clear the 15% mean-MAE gate with no degrading development fold.",
+  "final_test_accessed": false
+}

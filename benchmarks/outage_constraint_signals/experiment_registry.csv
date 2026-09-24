@@ -1,0 +1,2 @@
+experiment_name,feature_group,feature_artifact_sha256,overlap_rows,development_rows,candidate_feature_count,mean_mae_improvement_fraction,status,production_decision,reason,final_test_accessed
+outage_constraint_signals,generation_transmission_outage_and_ecp_constraint_pressure,fcca42a5d83af14d07bc83ba3525698ddd1ed9d0f113e3f662cf593c9fab27d3,2867,2436,30,-0.13880709626752447,rejected_development_gate,exclude,Candidate did not clear the 15% mean-MAE gate with no degrading development fold.,False

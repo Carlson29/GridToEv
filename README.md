@@ -9,6 +9,7 @@ The notebooks are:
 - `notebooks/02_train_and_export_models.ipynb`
 - `notebooks/03_extend_history_and_forecast_vintages.ipynb`
 - `notebooks/05_build_semo_market_signals.ipynb`
+- `notebooks/06_build_outage_constraint_signals.ipynb`
 
 It writes one combined modelling table:
 
@@ -70,6 +71,17 @@ This produces auditable, publication-time-safe schedule, PN, forecast-imbalance,
 imbalance-price, reserve, and SSII/SIFF features. See `docs/SEMO_MARKET_SIGNALS.md` for the full data
 contract, outputs, leakage controls, and current ablation decision.
 
+Build the generation-outage, transmission-outage, and ECP constraint-pressure family:
+
+```powershell
+python scripts/build_outage_constraint_data.py
+```
+
+This creates a 30/60-minute leakage-safe feature matrix, complete source provenance, quality checks,
+and a development-only ablation. The current feature family is retained for research but excluded
+from production because it did not pass the improvement gate. See
+`docs/OUTAGE_CONSTRAINT_SIGNALS.md` for semantics, measured coverage, and limitations.
+
 Start the prediction API:
 
 ```powershell
@@ -113,6 +125,13 @@ python -m unittest discover -s tests -v
 - `semo_market_source_manifest.csv`: source URL, retrieval timestamp, checksum, schema, and coverage.
 - `semo_market_quality_report.json`: per-report coverage, staleness, missingness, and leakage checks.
 - `benchmarks/semo_market_signals/ablation_report.json`: named feature-family evaluation decision.
+- `outage_events.csv.gz`: normalized generation and transmission outage intervals.
+- `ecp_constraint_pressure.csv.gz`: normalized ECP area/node constraint-study observations.
+- `outage_constraint_features_30_60.csv`: publication-safe outage/constraint model features.
+- `outage_constraint_feature_dictionary.csv`: feature units, sources, formulas, and availability.
+- `outage_constraint_source_manifest.csv`: official URLs, publication times, hashes, and coverage.
+- `outage_constraint_quality_report.json`: Issue #6 coverage and leakage checks.
+- `benchmarks/outage_constraint_signals/ablation_report.json`: sealed-test feature decision.
 
 ## Prediction API
 
@@ -125,6 +144,7 @@ python -m unittest discover -s tests -v
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
 See `docs/FORECAST_FEATURE_ENGINEERING.md` for the Issue #4 feature formulas and leakage controls.
+See `docs/OUTAGE_CONSTRAINT_SIGNALS.md` for the Issue #6 outage and constraint data contract.
 
 ## 48-hour performance sprint
 
