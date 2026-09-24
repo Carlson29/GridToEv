@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "experiment_name": "semo_market_operational_signals",
+  "feature_group": "semo_imbalance_schedule_pn_ntc",
+  "status": "rejected_no_temporal_overlap",
+  "production_decision": "exclude",
+  "reason": "The retained SEMO archive does not overlap the frozen labelled benchmark, so performance cannot be estimated without fabricating historical vintages.",
+  "overlap_rows": 0,
+  "baseline_rows": 2867,
+  "market_feature_rows": 636,
+  "baseline_first_issue_utc": "2026-01-02T00:00:00+00:00",
+  "baseline_last_issue_utc": "2026-01-31T22:30:00+00:00",
+  "market_first_issue_utc": "2026-09-20T21:00:00+00:00",
+  "market_last_issue_utc": "2026-09-27T12:00:00+00:00",
+  "signal_dataset_sha256": "c2e52690e5dda19a960f25176938c15d6b8077b6a2591e76796da2833f590abe",
+  "metrics": null,
+  "final_test_accessed": false
+}
