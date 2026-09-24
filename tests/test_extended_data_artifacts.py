@@ -21,6 +21,9 @@ class ExtendedDataArtifactTests(unittest.TestCase):
         cls.asof_quality = json.loads(
             (PROCESSED / "forecast_asof_quality_report.json").read_text()
         )
+        cls.engineered_quality = json.loads(
+            (PROCESSED / "forecast_model_feature_quality_report.json").read_text()
+        )
 
     def test_history_artifact_meets_issue_two_contract(self) -> None:
         history = pd.read_csv(
@@ -114,6 +117,50 @@ class ExtendedDataArtifactTests(unittest.TestCase):
         }
         self.assertTrue(required.issubset(manifest.columns))
         self.assertFalse(manifest[list(required)].isna().any().any())
+
+    def test_engineered_forecast_artifact_meets_issue_four_contract(self) -> None:
+        features = pd.read_csv(
+            PROCESSED / "forecast_model_features_30_60.csv",
+            low_memory=False,
+        )
+        dictionary = pd.read_csv(
+            PROCESSED / "forecast_model_feature_dictionary.csv"
+        )
+        issue = pd.to_datetime(features["issue_timestamp_utc"], utc=True)
+        target = pd.to_datetime(features["target_timestamp_utc"], utc=True)
+        expected_target = issue + pd.to_timedelta(
+            features["forecast_horizon_minutes"], unit="m"
+        )
+
+        self.assertEqual(len(features), self.engineered_quality["rows"])
+        self.assertEqual(set(features.columns), set(dictionary["column"]))
+        self.assertEqual(
+            int(
+                features.duplicated(
+                    ["issue_timestamp_utc", "forecast_horizon_minutes"]
+                ).sum()
+            ),
+            0,
+        )
+        self.assertTrue((target == expected_target).all())
+        self.assertEqual(self.engineered_quality["future_publication_violations"], 0)
+        self.assertEqual(self.engineered_quality["future_observation_violations"], 0)
+        self.assertEqual(
+            self.engineered_quality["unhandled_missing_feature_columns"], []
+        )
+        for column in features:
+            if column.endswith("_published_at_utc"):
+                published = pd.to_datetime(features[column], utc=True)
+                self.assertTrue((published.isna() | published.le(issue)).all(), column)
+            if column.endswith("_observed_at_utc"):
+                observed = pd.to_datetime(features[column], utc=True)
+                self.assertTrue((observed.isna() | observed.le(issue)).all(), column)
+
+        # The retained live forecast archive starts after the latest published
+        # actuals. The pipeline must flag that state as stale and avoid turning
+        # old interconnector flows into apparently current headroom.
+        self.assertTrue(features["latest_completed_state_stale_flag"].eq(1).all())
+        self.assertTrue(features["interconnector_export_headroom_mw"].isna().all())
 
 
 if __name__ == "__main__":

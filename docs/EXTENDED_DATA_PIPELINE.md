@@ -1,8 +1,9 @@
 # Extended history and forecast-vintage pipeline
 
-This pipeline completes performance-backlog Issues #2 and #3. It fixes the most important data
+This pipeline completes performance-backlog Issues #2, #3 and #4. It fixes the most important data
 weakness in the January-only baseline: too little history, and no auditable record of which forecast
-revision was available when a prediction would have been made.
+revision was available when a prediction would have been made. It also builds causal forecast-error,
+renewable-surplus and grid-headroom features.
 
 ## Run it
 
@@ -26,6 +27,9 @@ The same workflow, quality summaries, and inspection cells are in
 | `data/processed/eirgrid_core_history_30min.csv.gz` | One UTC half-hour. System state, named interconnector flows, dispatch-down labels, and field-level availability flags. |
 | `data/processed/forecast_vintages.csv.gz` | One forecast feature, target interval, and publication revision. Preserves publication, retrieval, source, region, value, and original time strings. |
 | `data/processed/forecast_features_asof_30_60.csv` | One issue time and 30/60-minute target. Contains only the latest revision published no later than that issue time. |
+| `data/processed/forecast_model_features_30_60.csv` | Issue #4 combined features: forecast state, revisions, causal errors and interconnector headroom. |
+| `data/processed/forecast_model_feature_dictionary.csv` | Formula, unit, source and availability rule for every engineered-table column. |
+| `data/processed/forecast_model_feature_quality_report.json` | Natural-key, horizon, leakage, missingness and staleness checks. |
 | `data/processed/extended_source_manifest.csv` | URL, local path, provider/report/year, retrieval time, checksum, licence note, schema version, row count, and first/last interval. |
 | `data/processed/*quality_report.json` | Coverage, duplicate-key checks, accounting tolerance, publication lag distributions, feature availability, and leakage checks. |
 
@@ -76,6 +80,11 @@ The latest half-hourly labels are monthly publications and can lag the live fore
 as-of table therefore reports `history_label_available_flag = 0` for its live targets. That table is
 ready for inference and for future supervised training once the matching dispatch-down report is
 published. Historical forecast coverage cannot be fabricated if the publisher no longer retains it.
+
+The same gap means the current Issue #4 artifact cannot honestly calculate live forecast errors.
+Completed system state is marked stale after 90 minutes, and stale interconnector flows are excluded
+from headroom, utilisation and SNSP-proxy calculations. See
+`docs/FORECAST_FEATURE_ENGINEERING.md` for formulas and availability rules.
 
 ## Source boundaries
 
