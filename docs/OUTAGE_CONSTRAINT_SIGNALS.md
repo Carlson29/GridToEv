@@ -112,13 +112,15 @@ with and without the new numeric features. It scores three expanding windows in
 the 70% training period plus the following 15% validation period. The final 15%
 test period remains sealed.
 
-The feature family is currently **excluded** from the production model. Mean
-development MAE changed from 12.547 MWh to 13.751 MWh, a 13.88% worsening, and
-one fold degraded materially. The acceptance rule requires at least a 15% mean
-improvement and no degrading fold. This result is evidence that one generation
-snapshot and a late transmission snapshot are too sparse to justify production
-inclusion yet; it is not evidence that outage data has no value. More historical
-publication vintages should be collected and the same ablation rerun.
+The feature family is currently **excluded** from the production model. The
+unweighted mean of the four fold MAEs changed from 12.547 MWh to 13.751 MWh (a
+9.60% worsening); the mean of the four per-fold improvement rates was -13.88%,
+and one fold degraded materially. The acceptance rule requires at least a 15%
+mean per-fold improvement and no degrading fold. This result is evidence that
+one generation snapshot and a late transmission snapshot are too sparse to
+justify production inclusion yet; it is not evidence that outage data has no
+value. More historical publication vintages should be collected and the same
+ablation rerun.
 
 ## Rebuild and outputs
 
