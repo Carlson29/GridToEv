@@ -70,6 +70,18 @@ python scripts/run_calibration_benchmark.py
 The experimental P50 meets its pinball target, but the P10–P90 interval misses the required
 coverage; it is not active. See `docs/CALIBRATED_INTERVALS_AND_COMPONENTS.md`.
 
+Check the release gates and reproduce both notebooks without replacing the deployed bundle:
+
+```powershell
+python scripts/run_release_preflight.py
+python scripts/verify_notebook_workflow.py --raw-cache data/raw
+```
+
+The release report currently retains v1.1.0: there is no approved replacement artifact, the
+rolling-model gate failed, and calibrated interval coverage is below its target. The notebook check
+needs the five original raw files cached under `data/raw`; it runs in a disposable directory. See
+`docs/RELEASE_INTEGRATION.md` for the complete release decision and API contract.
+
 Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
 
 ```powershell
@@ -127,6 +139,10 @@ python -m unittest discover -s tests -v
   used to choose ensemble weights.
 - `benchmarks/calibrated_intervals/`: issue #9 policy, forward-fold comparison and sealed-test
   evaluation report.
+- `benchmarks/release_preflight/release_report.json`: issue #10 release decision, frozen rollback
+  checksums, feature contract, provenance, and candidate guardrails.
+- `benchmarks/release_preflight/notebook_smoke_report.json`: isolated notebook rebuild and
+  two-horizon prediction check.
 - `eirgrid_core_history_30min.csv.gz`: 2021-present half-hourly EirGrid history with availability
   flags; gzip is read directly by pandas.
 - `forecast_vintages.csv.gz`: long-form target/publication/retrieval-time forecast revisions.
@@ -146,7 +162,8 @@ python -m unittest discover -s tests -v
 ## Prediction API
 
 - `GET /health`: readiness and model version.
-- `GET /model-info`: training metadata and available dataset time range.
+- `GET /model-info`: training metadata, live-feature contract, release status, and available dataset
+  time range.
 - `GET /dataset/available-times`: timestamps for a frontend selector.
 - `GET /predict/latest`: both forecast horizons for the latest available issue time.
 - `POST /predict/from-dataset`: one selected historical time and horizon.

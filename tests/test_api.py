@@ -50,6 +50,12 @@ class ApiTests(unittest.TestCase):
         model_info = self.client.get("/model-info")
         self.assertEqual(model_info.status_code, 200)
         self.assertEqual(model_info.json()["forecast_horizons_minutes"], [30, 60])
+        self.assertEqual(
+            model_info.json()["feature_contract"]["feature_count"],
+            len(self.training_result.bundle["feature_columns"]),
+        )
+        self.assertEqual(len(model_info.json()["feature_contract"]["sha256"]), 64)
+        self.assertIn("wind_lag_1", model_info.json()["feature_contract"]["required_live_features"])
 
     def test_predict_from_dataset(self) -> None:
         timestamp = self.data["issue_timestamp_utc"].iloc[-30].isoformat()
@@ -101,6 +107,25 @@ class ApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_extra_feature_is_rejected_with_clear_contract_error(self) -> None:
+        row = self.data.iloc[-30]
+        features = {
+            column: float(row[column])
+            for column in self.training_result.bundle["feature_columns"]
+            if column != "forecast_horizon_minutes"
+        }
+        features["untrained_future_signal"] = 1.0
+        response = self.client.post(
+            "/predict/features",
+            json={
+                "issue_timestamp_utc": row["issue_timestamp_utc"].isoformat(),
+                "forecast_horizon_minutes": 30,
+                "features": features,
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("Unexpected", response.json()["detail"])
 
 
 if __name__ == "__main__":

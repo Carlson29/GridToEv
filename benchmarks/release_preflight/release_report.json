@@ -1,0 +1,342 @@
+{
+  "active_model_version": "1.1.0",
+  "candidate": {
+    "artifact_path": null,
+    "artifact_sha256": null,
+    "development_gate_passed": false,
+    "final_test_scored": false,
+    "interval_gate_passed": false,
+    "name": "ensemble__v1.1.0__extra_trees_residual"
+  },
+  "contract_id": "dispatch-down-benchmark-v1",
+  "decision": {
+    "active_artifact": "models/gridtoev_model_bundle.joblib",
+    "candidate_approved": false,
+    "reason": "No candidate passed the rolling model gate and calibrated interval coverage. Keep the frozen v1.1.0 bundle active."
+  },
+  "guardrails": {
+    "both_horizons": {
+      "observed": {
+        "30": 0.002137436217000252,
+        "60": 0.017983412111617955
+      },
+      "passed": true,
+      "target": "neither horizon regresses"
+    },
+    "candidate_artifact": {
+      "observed": null,
+      "passed": false,
+      "target": "versioned candidate bundle available"
+    },
+    "component_reconciliation": {
+      "observed": 2.842170943040401e-14,
+      "passed": true,
+      "target": "<= 1e-9 MWh"
+    },
+    "final_test_mae": {
+      "observed": null,
+      "passed": false,
+      "target": 9.5
+    },
+    "final_test_rmse": {
+      "observed": null,
+      "passed": false,
+      "target": 18.0
+    },
+    "final_test_wape": {
+      "observed": null,
+      "passed": false,
+      "target": 0.14
+    },
+    "fold_stability": {
+      "observed": {
+        "train_fold_1": 0.003909939023075391,
+        "train_fold_2": -0.04491263910783327,
+        "train_fold_3": -0.02647404650904701,
+        "validation_fold": 0.04949971224197697
+      },
+      "passed": false,
+      "target": "at least 3 of 4 folds improve; worst fold no more than 2% worse"
+    },
+    "interval_coverage": {
+      "observed": 0.6890951276102089,
+      "passed": false,
+      "target": [
+        0.78,
+        0.9
+      ]
+    },
+    "interval_width": {
+      "observed": 0.6531019787645448,
+      "passed": true,
+      "target": "no more than 1.25 times deployed v1.1.0 interval width"
+    },
+    "p50_pinball": {
+      "observed": 5.912513196055683,
+      "passed": true,
+      "target": 6.0
+    },
+    "quantile_order": {
+      "observed": true,
+      "passed": true,
+      "target": true
+    },
+    "rolling_mae_improvement": {
+      "observed": 0.012176083284836492,
+      "passed": false,
+      "target": 0.15
+    }
+  },
+  "issue": 10,
+  "metadata": {
+    "dataset_sha256": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
+    "feature_columns": [
+      "entsoe_fossil_gas_generation_mw",
+      "entsoe_fossil_hard_coal_generation_mw",
+      "entsoe_fossil_oil_generation_mw",
+      "entsoe_fossil_peat_generation_mw",
+      "entsoe_hydro_pumped_storage_generation_mw",
+      "entsoe_hydro_run_of_river_and_poundage_generation_mw",
+      "entsoe_other_generation_mw",
+      "entsoe_solar_generation_mw",
+      "entsoe_wind_onshore_generation_mw",
+      "entsoe_generation_imputed_flag",
+      "entsoe_total_generation_mw",
+      "entsoe_renewable_generation_mw",
+      "entsoe_nonrenewable_generation_mw",
+      "entsoe_actual_load_mw",
+      "entsoe_load_imputed_flag",
+      "entsoe_price_eur_mwh",
+      "entsoe_price_hourly_carry_forward_flag",
+      "eirgrid_ie_generation_mw",
+      "eirgrid_ie_demand_mw",
+      "eirgrid_ie_wind_availability_mw",
+      "eirgrid_ie_wind_generation_mw",
+      "eirgrid_ie_solar_availability_mw",
+      "eirgrid_ie_solar_generation_mw",
+      "eirgrid_ie_hydro_generation_mw",
+      "eirgrid_ewic_flow_mw",
+      "eirgrid_greenlink_flow_mw",
+      "eirgrid_ie_wind_penetration_ratio",
+      "eirgrid_ie_solar_penetration_ratio",
+      "eirgrid_all_island_generation_mw",
+      "eirgrid_all_island_demand_mw",
+      "eirgrid_all_island_wind_availability_mw",
+      "eirgrid_all_island_wind_generation_mw",
+      "eirgrid_all_island_solar_availability_mw",
+      "eirgrid_all_island_solar_generation_mw",
+      "eirgrid_all_island_hydro_generation_mw",
+      "eirgrid_interjurisdictional_flow_mw",
+      "eirgrid_all_island_wind_penetration_ratio",
+      "eirgrid_all_island_solar_penetration_ratio",
+      "eirgrid_all_island_oversupply_mw",
+      "eirgrid_all_island_oversupply_ratio",
+      "eirgrid_snsp_ratio",
+      "eirgrid_system_imputed_flag",
+      "eirgrid_ie_variable_renewable_generation_mw",
+      "eirgrid_ie_variable_renewable_availability_mw",
+      "eirgrid_ie_renewable_headroom_mw",
+      "eirgrid_ie_net_load_mw",
+      "eirgrid_ie_renewable_share_ratio",
+      "eirgrid_snsp_headroom_to_75pct",
+      "entsoe_price_negative_flag",
+      "entsoe_price_below_20_flag",
+      "high_wind_low_load_interaction",
+      "hour_sin",
+      "hour_cos",
+      "weekday",
+      "weekday_sin",
+      "weekday_cos",
+      "is_weekend",
+      "month",
+      "dispatch_down_mwh_latest_observed",
+      "dispatch_down_event_latest_observed",
+      "wind_lag_1",
+      "wind_lag_2",
+      "wind_lag_4",
+      "wind_lag_12",
+      "wind_lag_48",
+      "wind_ramp_30m",
+      "wind_ramp_60m",
+      "load_lag_1",
+      "load_lag_2",
+      "load_lag_4",
+      "load_lag_12",
+      "load_lag_48",
+      "load_ramp_30m",
+      "load_ramp_60m",
+      "price_lag_1",
+      "price_lag_2",
+      "price_lag_4",
+      "price_lag_12",
+      "price_lag_48",
+      "price_ramp_30m",
+      "price_ramp_60m",
+      "snsp_lag_1",
+      "snsp_lag_2",
+      "snsp_lag_4",
+      "snsp_lag_12",
+      "snsp_lag_48",
+      "snsp_ramp_30m",
+      "snsp_ramp_60m",
+      "oversupply_lag_1",
+      "oversupply_lag_2",
+      "oversupply_lag_4",
+      "oversupply_lag_12",
+      "oversupply_lag_48",
+      "oversupply_ramp_30m",
+      "oversupply_ramp_60m",
+      "dispatch_down_mwh_lag_1",
+      "dispatch_down_event_lag_1",
+      "dispatch_down_mwh_lag_2",
+      "dispatch_down_event_lag_2",
+      "dispatch_down_mwh_lag_4",
+      "dispatch_down_event_lag_4",
+      "dispatch_down_mwh_lag_48",
+      "dispatch_down_event_lag_48",
+      "wind_rolling_mean_6",
+      "wind_rolling_std_6",
+      "load_rolling_mean_6",
+      "price_rolling_mean_6",
+      "price_rolling_std_6",
+      "wind_rolling_mean_12",
+      "wind_rolling_std_12",
+      "load_rolling_mean_12",
+      "price_rolling_mean_12",
+      "price_rolling_std_12",
+      "wind_rolling_mean_48",
+      "wind_rolling_std_48",
+      "load_rolling_mean_48",
+      "price_rolling_mean_48",
+      "price_rolling_std_48",
+      "forecast_horizon_minutes"
+    ],
+    "feature_contract_sha256": "31f0e3fc64694f136a730ebbc759bd4c3229d1d9916a76e35770570b8bc7eb99",
+    "forecast_horizons_minutes": [
+      30,
+      60
+    ],
+    "library_versions": {
+      "joblib": "1.6.0",
+      "numpy": "2.3.5",
+      "pandas": "3.0.1",
+      "python": "3.12.14",
+      "scikit_learn": "1.9.1"
+    },
+    "operating_policy": {
+      "classification_threshold": 0.1,
+      "dispatch_ml_weight_by_horizon": {
+        "30": 0.0,
+        "60": 0.0
+      },
+      "dispatch_trend_alpha_by_horizon": {
+        "30": 0.3500000000000001,
+        "60": 0.4750000000000001
+      },
+      "prediction_interval_adjustment_mwh": 5.441746267545682
+    },
+    "partitions": {
+      "test": {
+        "issue_timestamp_max_utc": "2026-01-31T22:30:00+00:00",
+        "issue_timestamp_min_utc": "2026-01-27T11:00:00+00:00",
+        "rows": 431
+      },
+      "train": {
+        "issue_timestamp_max_utc": "2026-01-22T22:00:00+00:00",
+        "issue_timestamp_min_utc": "2026-01-02T00:00:00+00:00",
+        "rows": 2006
+      },
+      "validation": {
+        "issue_timestamp_max_utc": "2026-01-27T10:30:00+00:00",
+        "issue_timestamp_min_utc": "2026-01-22T22:30:00+00:00",
+        "rows": 430
+      }
+    },
+    "rolling_origin_windows": [
+      [
+        0.4,
+        0.6
+      ],
+      [
+        0.6,
+        0.8
+      ],
+      [
+        0.8,
+        1.0
+      ]
+    ],
+    "source_coverage": {
+      "assumptions": {
+        "flexible_load_scenario_mw": 100.0,
+        "organiser_sample_timezone": "UTC; January overlap means Europe/Dublin offset is zero",
+        "price_alignment": "Hourly IE_SEM prices carried forward once to 30-minute intervals",
+        "short_gap_policy": "Time interpolation limited to two half-hour steps with flags"
+      },
+      "columns": 133,
+      "dataset": "data/processed/gridtoev_model_ready.csv",
+      "duplicate_natural_keys": 0,
+      "event_rate_by_horizon": {
+        "30": 0.4504881450488145,
+        "60": 0.45010467550593164
+      },
+      "forecast_horizons_minutes": [
+        30,
+        60
+      ],
+      "issue_timestamp_max_utc": "2026-01-31T22:30:00+00:00",
+      "issue_timestamp_min_utc": "2026-01-02T00:00:00+00:00",
+      "max_target_accounting_difference_mwh": 0.020000000000095497,
+      "missing_cells": 0,
+      "rows": 2867
+    },
+    "source_manifest_sha256": "2aac5158983d0670fe8623f615fe0bad8da493466497dd9eb0fae2481bef0f97",
+    "training_config": {
+      "l2_regularization": 1.0,
+      "learning_rate": 0.05,
+      "max_iter": 180,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 20,
+      "random_state": 42,
+      "train_fraction": 0.7,
+      "validation_fraction": 0.15
+    },
+    "upstream_feature_decisions": {
+      "forecast_error_grid_headroom": "available code, no temporally overlapping labelled feature artifact",
+      "outage_constraint_signals": "excluded: development ablation failed on its feature branch",
+      "regional_weather_signals": "excluded: development ablation failed on its feature branch",
+      "semo_market_operational_signals": "excluded: zero overlap with January benchmark"
+    }
+  },
+  "rollback": {
+    "hashes": {
+      "dataset_sha256": {
+        "actual": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
+        "expected": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
+        "passed": true,
+        "path": "data/processed/gridtoev_model_ready.csv"
+      },
+      "metadata_sha256": {
+        "actual": "e2ede1e02e5b4e7625b6985f5ce3b9f44f8848edce7f9189c9ad755f4a9d1a4f",
+        "expected": "e2ede1e02e5b4e7625b6985f5ce3b9f44f8848edce7f9189c9ad755f4a9d1a4f",
+        "passed": true,
+        "path": "models/model_metadata.json"
+      },
+      "metrics_sha256": {
+        "actual": "6c7ff02624b397fd8074a4d4793cf2e873054c5433d0aee89ae21660ae1ec7ef",
+        "expected": "6c7ff02624b397fd8074a4d4793cf2e873054c5433d0aee89ae21660ae1ec7ef",
+        "passed": true,
+        "path": "models/training_metrics.json"
+      },
+      "model_artifact_sha256": {
+        "actual": "c5ce8f01b25ac4df186aca66cc154be9097b2c5529a8a89e1a9b78302d9d427f",
+        "expected": "c5ce8f01b25ac4df186aca66cc154be9097b2c5529a8a89e1a9b78302d9d427f",
+        "passed": true,
+        "path": "models/gridtoev_model_bundle.joblib"
+      }
+    },
+    "model_version": "1.1.0",
+    "verified": true
+  },
+  "schema_version": 1
+}

@@ -1,0 +1,25 @@
+{
+  "dataset_columns": 133,
+  "dataset_rows": 2867,
+  "frozen_dataset_sha256": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
+  "notebooks_executed": [
+    "01_build_model_ready_dataset.ipynb",
+    "02_train_and_export_models.ipynb"
+  ],
+  "prediction_components_reconciled": true,
+  "prediction_horizons_minutes": [
+    30,
+    60
+  ],
+  "rebuilt_dataset_matches_frozen": true,
+  "rebuilt_dataset_sha256": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
+  "schema_version": 1,
+  "source_files_preloaded": [
+    "hacktheclimate/generation.csv",
+    "hacktheclimate/load.csv",
+    "hacktheclimate/prices.csv",
+    "eirgrid/system_data_qtr_hourly_2026_v7.xlsx",
+    "eirgrid/dd_half_hourly_2026_v9.xlsx"
+  ],
+  "trained_model_version": "1.1.0"
+}

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from .constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
 from .inference import FeatureValidationError, PredictionService
+from .release_preflight import DEFAULT_REPORT_PATH
 
 
 ForecastHorizon = Literal[30, 60]
@@ -56,6 +57,7 @@ def _default_service() -> PredictionService:
     return PredictionService(
         model_path=os.getenv("GRIDTOEV_MODEL_PATH", str(DEFAULT_MODEL_PATH)),
         dataset_path=os.getenv("GRIDTOEV_DATASET_PATH", str(DEFAULT_DATASET_PATH)),
+        release_report_path=os.getenv("GRIDTOEV_RELEASE_REPORT_PATH", str(DEFAULT_REPORT_PATH)),
     )
 
 
