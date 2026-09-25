@@ -9,6 +9,7 @@ The notebooks are:
 - `notebooks/02_train_and_export_models.ipynb`
 - `notebooks/03_extend_history_and_forecast_vintages.ipynb`
 - `notebooks/05_build_semo_market_signals.ipynb`
+- `notebooks/08_benchmark_horizon_models.ipynb`
 
 It writes one combined modelling table:
 
@@ -47,6 +48,16 @@ python scripts/run_benchmark.py
 That command validates dataset order and publication times, selects operating settings without final-
 test access, scores the sealed test only after selection, verifies the committed hashes and metrics,
 and writes the granular report and experiment registry under `benchmarks/v1.1.0/`.
+
+Compare horizon-specific linear, histogram-gradient-boosting, Extra Trees, two-stage, and stable
+out-of-fold ensemble candidates:
+
+```powershell
+python scripts/run_horizon_benchmark.py
+```
+
+The current best candidate improves rolling MAE by only 1.22% and fails the fold-stability gate, so
+v1.1.0 remains active and the final test stays sealed. See `docs/HORIZON_MODEL_BENCHMARK.md`.
 
 Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
 
@@ -98,6 +109,11 @@ python -m unittest discover -s tests -v
   v1.1.0 metrics.
 - `benchmarks/v1.1.0/benchmark_report.json`: aggregate, per-horizon, per-fold, and event-regime results.
 - `benchmarks/v1.1.0/experiment_registry.csv`: machine-readable baseline row for future comparisons.
+- `benchmarks/horizon_models/benchmark_report.json`: Issue #8 candidate, horizon, fold, regime and
+  release-gate report.
+- `benchmarks/horizon_models/experiment_registry.csv`: machine-readable candidate and ablation runs.
+- `benchmarks/horizon_models/development_oof_predictions.csv.gz`: auditable development predictions
+  used to choose ensemble weights.
 - `eirgrid_core_history_30min.csv.gz`: 2021-present half-hourly EirGrid history with availability
   flags; gzip is read directly by pandas.
 - `forecast_vintages.csv.gz`: long-form target/publication/retrieval-time forecast revisions.

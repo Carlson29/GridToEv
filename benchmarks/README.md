@@ -60,6 +60,13 @@ The reproducible final-test result is:
 Future candidate rows should retain the same `contract_id`. A new contract version is required if the
 dataset, folds, final-test period, metric definitions, or leakage rules intentionally change.
 
+## Horizon-specific candidate benchmark
+
+Issue #8 writes its standard-model and stable-ensemble comparison under `horizon_models/`. The best
+development candidate improves rolling MAE by 1.22%, but it fails the 15% aggregate gate and the fold-
+stability rule. The final test is therefore not accessed and v1.1.0 remains the active model. See
+`docs/HORIZON_MODEL_BENCHMARK.md` for the full decision and reproduction command.
+
 ## SEMO market-signal ablation
 
 Issue #5 records its named feature-family decision under `semo_market_signals/`. The retained SEMO

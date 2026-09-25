@@ -30,6 +30,7 @@ test = ["httpx==0.28.1"]
 
 [project.scripts]
 gridtoev-benchmark = "gridtoev.benchmarking:main"
+gridtoev-horizon-benchmark = "gridtoev.horizon_benchmark:main"
 gridtoev-train = "gridtoev.training:main"
 
 [tool.setuptools.packages.find]
