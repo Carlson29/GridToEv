@@ -10,6 +10,7 @@ The notebooks are:
 - `notebooks/03_extend_history_and_forecast_vintages.ipynb`
 - `notebooks/05_build_semo_market_signals.ipynb`
 - `notebooks/08_benchmark_horizon_models.ipynb`
+- `notebooks/09_review_calibration_and_components.ipynb`
 
 It writes one combined modelling table:
 
@@ -58,6 +59,16 @@ python scripts/run_horizon_benchmark.py
 
 The current best candidate improves rolling MAE by only 1.22% and fails the fold-stability gate, so
 v1.1.0 remains active and the final test stays sealed. See `docs/HORIZON_MODEL_BENCHMARK.md`.
+
+Evaluate interval calibration and curtailment/constraint reconciliation from issue #8's out-of-fold
+predictions:
+
+```powershell
+python scripts/run_calibration_benchmark.py
+```
+
+The experimental P50 meets its pinball target, but the P10–P90 interval misses the required
+coverage; it is not active. See `docs/CALIBRATED_INTERVALS_AND_COMPONENTS.md`.
 
 Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
 
@@ -114,6 +125,8 @@ python -m unittest discover -s tests -v
 - `benchmarks/horizon_models/experiment_registry.csv`: machine-readable candidate and ablation runs.
 - `benchmarks/horizon_models/development_oof_predictions.csv.gz`: auditable development predictions
   used to choose ensemble weights.
+- `benchmarks/calibrated_intervals/`: issue #9 policy, forward-fold comparison and sealed-test
+  evaluation report.
 - `eirgrid_core_history_30min.csv.gz`: 2021-present half-hourly EirGrid history with availability
   flags; gzip is read directly by pandas.
 - `forecast_vintages.csv.gz`: long-form target/publication/retrieval-time forecast revisions.

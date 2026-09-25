@@ -1,0 +1,148 @@
+{
+  "components": {
+    "constraint_mae_mwh": 13.728295601912352,
+    "curtailment_mae_mwh": 2.391825614944524,
+    "reconciliation_max_absolute_error_mwh": 2.842170943040401e-14,
+    "refit_eligibility": {
+      "checks": {
+        "history_days": false,
+        "positive_days": false,
+        "positive_rows": true
+      },
+      "eligible": false,
+      "failed_checks": [
+        "history_days",
+        "positive_days"
+      ],
+      "history_span_days": 25.4375,
+      "positive_days": {
+        "constraint_mwh": 20,
+        "curtailment_mwh": 8
+      },
+      "positive_rows": {
+        "constraint_mwh": 992,
+        "curtailment_mwh": 231
+      },
+      "requirements": {
+        "minimum_history_days": 90,
+        "minimum_positive_days_per_component": 20,
+        "minimum_positive_rows_per_component": 100
+      }
+    },
+    "refitted": false
+  },
+  "contract_id": "dispatch-down-benchmark-v1",
+  "dataset_sha256": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
+  "final_test": {
+    "accessed_after_selection": true,
+    "average_width_ratio_to_deployed_v1.1.0": 0.6531019787645448,
+    "by_horizon": {
+      "30": {
+        "candidate": {
+          "average_width_mwh": 16.68125324074075,
+          "coverage": 0.6990740740740741,
+          "median_width_mwh": 20.28750000000001,
+          "p10_pinball_loss": 2.725199027777777,
+          "p50_pinball_loss": 4.319522685185184,
+          "p90_pinball_loss": 2.7959302314814805,
+          "rows": 216
+        },
+        "deployed_v1.1.0": {
+          "average_width_mwh": 31.883857789373586,
+          "coverage": 0.8009259259259259,
+          "median_width_mwh": 28.91611600057965,
+          "p10_pinball_loss": 2.34364933428928,
+          "p50_pinball_loss": 5.436392778537339,
+          "p90_pinball_loss": 2.6913619829621016,
+          "rows": 216
+        }
+      },
+      "60": {
+        "candidate": {
+          "average_width_mwh": 27.899204069767514,
+          "coverage": 0.6790697674418604,
+          "median_width_mwh": 34.50515000000006,
+          "p10_pinball_loss": 4.537178046511626,
+          "p50_pinball_loss": 7.5129129651162785,
+          "p90_pinball_loss": 4.692314918604645,
+          "rows": 215
+        },
+        "deployed_v1.1.0": {
+          "average_width_mwh": 36.34620874106459,
+          "coverage": 0.7441860465116279,
+          "median_width_mwh": 33.15245976328944,
+          "p10_pinball_loss": 3.4083569891884467,
+          "p50_pinball_loss": 7.950262252418899,
+          "p90_pinball_loss": 4.676669966417368,
+          "rows": 215
+        }
+      }
+    },
+    "candidate": {
+      "average_width_mwh": 22.277214791183333,
+      "coverage": 0.6890951276102089,
+      "median_width_mwh": 20.28750000000001,
+      "p10_pinball_loss": 3.6290864733178645,
+      "p50_pinball_loss": 5.912513196055683,
+      "p90_pinball_loss": 3.741922592807421,
+      "rows": 431
+    },
+    "deployed_v1.1.0": {
+      "average_width_mwh": 34.10985652397583,
+      "coverage": 0.7726218097447796,
+      "median_width_mwh": 31.08037393148428,
+      "p10_pinball_loss": 2.874768002046405,
+      "p50_pinball_loss": 6.690411193582665,
+      "p90_pinball_loss": 3.6817128331776066,
+      "rows": 431
+    }
+  },
+  "issue": 9,
+  "oof_sha256": "bb23a65b47def66009886d9b76a3aeea4b23f7f456252255d1863ec8a22411e8",
+  "production_bundle_modified": false,
+  "production_bundle_sha256": "c5ce8f01b25ac4df186aca66cc154be9097b2c5529a8a89e1a9b78302d9d427f",
+  "production_decision": "retain_v1.1.0_intervals",
+  "release_candidate_eligible": false,
+  "release_checks": {
+    "components_reconciled": true,
+    "coverage_max": true,
+    "coverage_min": false,
+    "p50_pinball": true,
+    "quantiles_ordered_nonnegative": true,
+    "width_not_excessive": true
+  },
+  "schema_version": 1,
+  "selection": {
+    "development_folds": [
+      "train_fold_1",
+      "train_fold_2",
+      "train_fold_3",
+      "validation_fold"
+    ],
+    "final_test_labels_used": false,
+    "policy": {
+      "calibration_fold_names": [
+        "train_fold_1",
+        "train_fold_2",
+        "train_fold_3",
+        "validation_fold"
+      ],
+      "calibration_rows": 1634,
+      "central_forecast": "v1.1.0 dispatch-down trend",
+      "method": "horizon_asymmetric",
+      "nominal_coverage": 0.8,
+      "offsets_by_horizon": {
+        "30": {
+          "lower": -10.761750000000006,
+          "upper": 9.525750000000002
+        },
+        "60": {
+          "lower": -19.13855,
+          "upper": 15.366600000000062
+        }
+      },
+      "selected_from": "development out-of-fold predictions only"
+    },
+    "selected_before_final_test_scoring": true
+  }
+}

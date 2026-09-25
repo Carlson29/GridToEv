@@ -67,6 +67,14 @@ development candidate improves rolling MAE by 1.22%, but it fails the 15% aggreg
 stability rule. The final test is therefore not accessed and v1.1.0 remains the active model. See
 `docs/HORIZON_MODEL_BENCHMARK.md` for the full decision and reproduction command.
 
+## Calibrated interval experiment
+
+Issue #9 uses issue #8's out-of-fold predictions to select horizon-specific interval adjustments.
+The selected policy meets the P50 pinball target but covers only 68.91% of the frozen final test,
+below the required 78–90%. Its artifacts are under `calibrated_intervals/`; v1.1.0 intervals remain
+active. See `docs/CALIBRATED_INTERVALS_AND_COMPONENTS.md` for the full comparison and component
+refit decision.
+
 ## SEMO market-signal ablation
 
 Issue #5 records its named feature-family decision under `semo_market_signals/`. The retained SEMO

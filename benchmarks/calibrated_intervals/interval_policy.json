@@ -1,0 +1,23 @@
+{
+  "calibration_fold_names": [
+    "train_fold_1",
+    "train_fold_2",
+    "train_fold_3",
+    "validation_fold"
+  ],
+  "calibration_rows": 1634,
+  "central_forecast": "v1.1.0 dispatch-down trend",
+  "method": "horizon_asymmetric",
+  "nominal_coverage": 0.8,
+  "offsets_by_horizon": {
+    "30": {
+      "lower": -10.761750000000006,
+      "upper": 9.525750000000002
+    },
+    "60": {
+      "lower": -19.13855,
+      "upper": 15.366600000000062
+    }
+  },
+  "selected_from": "development out-of-fold predictions only"
+}
