@@ -1,0 +1,2 @@
+experiment_name,feature_group,feature_artifact_sha256,overlap_rows,development_rows,candidate_feature_count,mean_mae_improvement_fraction,status,production_decision,reason,final_test_accessed
+regional_weather_signals,capacity_weighted_regional_weather_forecast_and_error,c674e3b89fef5329d93b9b063530249cd08cbf2c08578f97db80b16d996d5eee,2867,2436,8,6.266931215729785e-05,rejected_development_gate,exclude,Candidate did not clear the 15% mean per-fold MAE gate with no degrading fold.,False

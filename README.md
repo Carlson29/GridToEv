@@ -9,6 +9,7 @@ The notebooks are:
 - `notebooks/02_train_and_export_models.ipynb`
 - `notebooks/03_extend_history_and_forecast_vintages.ipynb`
 - `notebooks/05_build_semo_market_signals.ipynb`
+- `notebooks/07_build_regional_weather_signals.ipynb`
 
 It writes one combined modelling table:
 
@@ -70,6 +71,17 @@ This produces auditable, publication-time-safe schedule, PN, forecast-imbalance,
 imbalance-price, reserve, and SSII/SIFF features. See `docs/SEMO_MARKET_SIGNALS.md` for the full data
 contract, outputs, leakage controls, and current ablation decision.
 
+Build the capacity-weighted regional weather feature family:
+
+```powershell
+python scripts/build_regional_weather_data.py --workers 4
+```
+
+This downloads explicit ECMWF model-run vintages for six Irish regions, applies conservative
+publication times, builds wind/solar-weighted weather and causal error features, and evaluates six
+development-only ablations. The best current variant did not pass the release gate, so it remains
+excluded from production. See `docs/REGIONAL_WEATHER_SIGNALS.md` for the full contract and limitations.
+
 Start the prediction API:
 
 ```powershell
@@ -113,6 +125,13 @@ python -m unittest discover -s tests -v
 - `semo_market_source_manifest.csv`: source URL, retrieval timestamp, checksum, schema, and coverage.
 - `semo_market_quality_report.json`: per-report coverage, staleness, missingness, and leakage checks.
 - `benchmarks/semo_market_signals/ablation_report.json`: named feature-family evaluation decision.
+- `regional_weather_forecast_vintages.csv.gz`: normalized model-run/valid-time forecasts.
+- `regional_weather_analysis_proxy.csv.gz`: delayed historical-forecast analysis proxy.
+- `regional_weather_features_30_60.csv`: capacity-weighted regional weather model features.
+- `regional_weather_feature_dictionary.csv`: weather units, formulas, and availability rules.
+- `regional_weather_source_manifest.csv`: source URLs, retrieval times, checksums, and coverage.
+- `regional_weather_quality_report.json`: Issue #7 coverage and leakage checks.
+- `benchmarks/regional_weather_signals/ablation_report.json`: six-variant weather decision.
 
 ## Prediction API
 
@@ -125,6 +144,7 @@ python -m unittest discover -s tests -v
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
 See `docs/FORECAST_FEATURE_ENGINEERING.md` for the Issue #4 feature formulas and leakage controls.
+See `docs/REGIONAL_WEATHER_SIGNALS.md` for the Issue #7 weather-vintage and weighting contract.
 
 ## 48-hour performance sprint
 

@@ -23,10 +23,13 @@ Package licence files distributed with the installed packages remain authoritati
 - EirGrid DD Half-Hourly 2026
 - SEMO static reports for wind/load forecasts, RTIC schedules, physical notifications, forecast
   imbalance, net imbalance volume forecasts, interconnector NTC, imbalance outcomes, and SSII/SIFF
+- Open-Meteo ECMWF IFS Single Runs and Historical Forecast API responses, CC BY 4.0; transformed by
+  interpolation, capacity weighting, vector conversion, and causal error feature engineering
 
 Source URLs and file hashes are recorded in `data/processed/source_manifest.csv`,
 `data/processed/extended_source_manifest.csv`, and
 `data/processed/semo_market_source_manifest.csv`. Data-provider terms and event-specific rules remain
 authoritative; do not assume that public download access grants a right to redistribute unchanged raw
-files. SEMO raw XML reports are downloaded from `https://reports.sem-o.com/` and are not redistributed
-in this repository.
+files. Weather provenance is recorded in `data/processed/regional_weather_source_manifest.csv`.
+SEMO raw XML and Open-Meteo raw JSON responses are downloaded for local processing and are not
+redistributed in this repository.

@@ -1,0 +1,463 @@
+{
+  "experiment_name": "regional_weather_signals",
+  "feature_group": "capacity_weighted_regional_weather_forecast_and_error",
+  "feature_artifact": "data/processed/regional_weather_features_30_60.csv",
+  "feature_artifact_sha256": "c674e3b89fef5329d93b9b063530249cd08cbf2c08578f97db80b16d996d5eee",
+  "overlap_rows": 2867,
+  "development_rows": 2436,
+  "development_fold_count": 4,
+  "evaluated_variant_count": 6,
+  "selected_variant": "causal_errors_only",
+  "candidate_feature_count": 8,
+  "candidate_features": [
+    "weather_error_source_available_flag",
+    "weather_wind_error_latest_mps",
+    "weather_wind_error_bias_24h_mps",
+    "weather_wind_error_mae_24h_mps",
+    "weather_temperature_error_bias_24h_c",
+    "weather_irradiance_error_bias_24h_wm2",
+    "weather_irradiance_error_mae_24h_wm2",
+    "weather_error_observation_count_24h"
+  ],
+  "model": "hist_gradient_boosting_dispatch_residual",
+  "selection_gate": {
+    "mean_mae_improvement_min": 0.15,
+    "maximum_fold_degradation": 0.0
+  },
+  "metrics": {
+    "feature_count": 8,
+    "features": [
+      "weather_error_source_available_flag",
+      "weather_wind_error_latest_mps",
+      "weather_wind_error_bias_24h_mps",
+      "weather_wind_error_mae_24h_mps",
+      "weather_temperature_error_bias_24h_c",
+      "weather_irradiance_error_bias_24h_wm2",
+      "weather_irradiance_error_mae_24h_wm2",
+      "weather_error_observation_count_24h"
+    ],
+    "folds": [
+      {
+        "fold": "train_rolling_1",
+        "fit_rows": 802,
+        "score_rows": 400,
+        "baseline_mae_mwh": 23.422916286747878,
+        "candidate_mae_mwh": 23.448392485298687,
+        "mae_improvement_fraction": -0.0010876612561358458
+      },
+      {
+        "fold": "train_rolling_2",
+        "fit_rows": 1202,
+        "score_rows": 402,
+        "baseline_mae_mwh": 2.2008774645649014,
+        "candidate_mae_mwh": 2.1693663673057157,
+        "mae_improvement_fraction": 0.014317515521208352
+      },
+      {
+        "fold": "train_rolling_3",
+        "fit_rows": 1604,
+        "score_rows": 402,
+        "baseline_mae_mwh": 9.559334993123278,
+        "candidate_mae_mwh": 9.473631079201379,
+        "mae_improvement_fraction": 0.008965468202919108
+      },
+      {
+        "fold": "validation",
+        "fit_rows": 2006,
+        "score_rows": 430,
+        "baseline_mae_mwh": 15.00448640915832,
+        "candidate_mae_mwh": 15.333754540106044,
+        "mae_improvement_fraction": -0.021944645219362423
+      }
+    ],
+    "mean_baseline_mae_mwh": 12.546903788398593,
+    "mean_candidate_mae_mwh": 12.606286117977955,
+    "mean_mae_improvement_fraction": 6.266931215729785e-05,
+    "worst_fold_improvement_fraction": -0.021944645219362423
+  },
+  "variants": {
+    "all_weather": {
+      "feature_count": 59,
+      "features": [
+        "weather_forecast_source_available_flag",
+        "weather_forecast_age_hours",
+        "weather_wind_region_coverage_ratio",
+        "weather_solar_region_coverage_ratio",
+        "weather_wind_weighted_speed_100m_mps",
+        "weather_wind_weighted_u_100m_mps",
+        "weather_wind_weighted_v_100m_mps",
+        "weather_wind_weighted_gust_10m_mps",
+        "weather_wind_weighted_gust_excess_mps",
+        "weather_wind_speed_spatial_spread_mps",
+        "weather_wind_gust_spatial_spread_mps",
+        "weather_wind_weighted_pressure_tendency_3h_hpa",
+        "weather_solar_weighted_temperature_2m_c",
+        "weather_solar_weighted_cloud_cover_pct",
+        "weather_solar_weighted_shortwave_radiation_wm2",
+        "weather_region_northwest_missing_flag",
+        "weather_region_northwest_wind_speed_100m_mps",
+        "weather_region_northwest_wind_gusts_10m_mps",
+        "weather_region_northwest_temperature_2m_c",
+        "weather_region_northwest_cloud_cover_pct",
+        "weather_region_northwest_shortwave_radiation_wm2",
+        "weather_region_west_missing_flag",
+        "weather_region_west_wind_speed_100m_mps",
+        "weather_region_west_wind_gusts_10m_mps",
+        "weather_region_west_temperature_2m_c",
+        "weather_region_west_cloud_cover_pct",
+        "weather_region_west_shortwave_radiation_wm2",
+        "weather_region_southwest_missing_flag",
+        "weather_region_southwest_wind_speed_100m_mps",
+        "weather_region_southwest_wind_gusts_10m_mps",
+        "weather_region_southwest_temperature_2m_c",
+        "weather_region_southwest_cloud_cover_pct",
+        "weather_region_southwest_shortwave_radiation_wm2",
+        "weather_region_midlands_missing_flag",
+        "weather_region_midlands_wind_speed_100m_mps",
+        "weather_region_midlands_wind_gusts_10m_mps",
+        "weather_region_midlands_temperature_2m_c",
+        "weather_region_midlands_cloud_cover_pct",
+        "weather_region_midlands_shortwave_radiation_wm2",
+        "weather_region_east_missing_flag",
+        "weather_region_east_wind_speed_100m_mps",
+        "weather_region_east_wind_gusts_10m_mps",
+        "weather_region_east_temperature_2m_c",
+        "weather_region_east_cloud_cover_pct",
+        "weather_region_east_shortwave_radiation_wm2",
+        "weather_region_southeast_missing_flag",
+        "weather_region_southeast_wind_speed_100m_mps",
+        "weather_region_southeast_wind_gusts_10m_mps",
+        "weather_region_southeast_temperature_2m_c",
+        "weather_region_southeast_cloud_cover_pct",
+        "weather_region_southeast_shortwave_radiation_wm2",
+        "weather_error_source_available_flag",
+        "weather_wind_error_latest_mps",
+        "weather_wind_error_bias_24h_mps",
+        "weather_wind_error_mae_24h_mps",
+        "weather_temperature_error_bias_24h_c",
+        "weather_irradiance_error_bias_24h_wm2",
+        "weather_irradiance_error_mae_24h_wm2",
+        "weather_error_observation_count_24h"
+      ],
+      "folds": [
+        {
+          "fold": "train_rolling_1",
+          "fit_rows": 802,
+          "score_rows": 400,
+          "baseline_mae_mwh": 23.422916286747878,
+          "candidate_mae_mwh": 26.51045652611097,
+          "mae_improvement_fraction": -0.13181707186094285
+        },
+        {
+          "fold": "train_rolling_2",
+          "fit_rows": 1202,
+          "score_rows": 402,
+          "baseline_mae_mwh": 2.2008774645649014,
+          "candidate_mae_mwh": 2.6986219571610692,
+          "mae_improvement_fraction": -0.2261572943564891
+        },
+        {
+          "fold": "train_rolling_3",
+          "fit_rows": 1604,
+          "score_rows": 402,
+          "baseline_mae_mwh": 9.559334993123278,
+          "candidate_mae_mwh": 9.1576498420871,
+          "mae_improvement_fraction": 0.0420201981963326
+        },
+        {
+          "fold": "validation",
+          "fit_rows": 2006,
+          "score_rows": 430,
+          "baseline_mae_mwh": 15.00448640915832,
+          "candidate_mae_mwh": 14.652033227359627,
+          "mae_improvement_fraction": 0.023489853113770335
+        }
+      ],
+      "mean_baseline_mae_mwh": 12.546903788398593,
+      "mean_candidate_mae_mwh": 13.254690388179693,
+      "mean_mae_improvement_fraction": -0.07311607872683225,
+      "worst_fold_improvement_fraction": -0.2261572943564891
+    },
+    "aggregate_forecast_and_errors": {
+      "feature_count": 23,
+      "features": [
+        "weather_forecast_source_available_flag",
+        "weather_forecast_age_hours",
+        "weather_wind_region_coverage_ratio",
+        "weather_solar_region_coverage_ratio",
+        "weather_wind_weighted_speed_100m_mps",
+        "weather_wind_weighted_u_100m_mps",
+        "weather_wind_weighted_v_100m_mps",
+        "weather_wind_weighted_gust_10m_mps",
+        "weather_wind_weighted_gust_excess_mps",
+        "weather_wind_speed_spatial_spread_mps",
+        "weather_wind_gust_spatial_spread_mps",
+        "weather_wind_weighted_pressure_tendency_3h_hpa",
+        "weather_solar_weighted_temperature_2m_c",
+        "weather_solar_weighted_cloud_cover_pct",
+        "weather_solar_weighted_shortwave_radiation_wm2",
+        "weather_error_source_available_flag",
+        "weather_wind_error_latest_mps",
+        "weather_wind_error_bias_24h_mps",
+        "weather_wind_error_mae_24h_mps",
+        "weather_temperature_error_bias_24h_c",
+        "weather_irradiance_error_bias_24h_wm2",
+        "weather_irradiance_error_mae_24h_wm2",
+        "weather_error_observation_count_24h"
+      ],
+      "folds": [
+        {
+          "fold": "train_rolling_1",
+          "fit_rows": 802,
+          "score_rows": 400,
+          "baseline_mae_mwh": 23.422916286747878,
+          "candidate_mae_mwh": 26.070381323081588,
+          "mae_improvement_fraction": -0.11302883910453036
+        },
+        {
+          "fold": "train_rolling_2",
+          "fit_rows": 1202,
+          "score_rows": 402,
+          "baseline_mae_mwh": 2.2008774645649014,
+          "candidate_mae_mwh": 2.4411621363021556,
+          "mae_improvement_fraction": -0.10917676045392961
+        },
+        {
+          "fold": "train_rolling_3",
+          "fit_rows": 1604,
+          "score_rows": 402,
+          "baseline_mae_mwh": 9.559334993123278,
+          "candidate_mae_mwh": 8.6726661120846,
+          "mae_improvement_fraction": 0.0927542430175867
+        },
+        {
+          "fold": "validation",
+          "fit_rows": 2006,
+          "score_rows": 430,
+          "baseline_mae_mwh": 15.00448640915832,
+          "candidate_mae_mwh": 15.306858904266644,
+          "mae_improvement_fraction": -0.02015213895783627
+        }
+      ],
+      "mean_baseline_mae_mwh": 12.546903788398593,
+      "mean_candidate_mae_mwh": 13.122767118933748,
+      "mean_mae_improvement_fraction": -0.03740087387467739,
+      "worst_fold_improvement_fraction": -0.11302883910453036
+    },
+    "aggregate_forecast_only": {
+      "feature_count": 15,
+      "features": [
+        "weather_forecast_source_available_flag",
+        "weather_forecast_age_hours",
+        "weather_wind_region_coverage_ratio",
+        "weather_solar_region_coverage_ratio",
+        "weather_wind_weighted_speed_100m_mps",
+        "weather_wind_weighted_u_100m_mps",
+        "weather_wind_weighted_v_100m_mps",
+        "weather_wind_weighted_gust_10m_mps",
+        "weather_wind_weighted_gust_excess_mps",
+        "weather_wind_speed_spatial_spread_mps",
+        "weather_wind_gust_spatial_spread_mps",
+        "weather_wind_weighted_pressure_tendency_3h_hpa",
+        "weather_solar_weighted_temperature_2m_c",
+        "weather_solar_weighted_cloud_cover_pct",
+        "weather_solar_weighted_shortwave_radiation_wm2"
+      ],
+      "folds": [
+        {
+          "fold": "train_rolling_1",
+          "fit_rows": 802,
+          "score_rows": 400,
+          "baseline_mae_mwh": 23.422916286747878,
+          "candidate_mae_mwh": 25.98685340103743,
+          "mae_improvement_fraction": -0.10946276214717829
+        },
+        {
+          "fold": "train_rolling_2",
+          "fit_rows": 1202,
+          "score_rows": 402,
+          "baseline_mae_mwh": 2.2008774645649014,
+          "candidate_mae_mwh": 2.4674933227334757,
+          "mae_improvement_fraction": -0.12114070976744833
+        },
+        {
+          "fold": "train_rolling_3",
+          "fit_rows": 1604,
+          "score_rows": 402,
+          "baseline_mae_mwh": 9.559334993123278,
+          "candidate_mae_mwh": 8.760816654396738,
+          "mae_improvement_fraction": 0.08353283353925475
+        },
+        {
+          "fold": "validation",
+          "fit_rows": 2006,
+          "score_rows": 430,
+          "baseline_mae_mwh": 15.00448640915832,
+          "candidate_mae_mwh": 15.912531424046717,
+          "mae_improvement_fraction": -0.060518233688702086
+        }
+      ],
+      "mean_baseline_mae_mwh": 12.546903788398593,
+      "mean_candidate_mae_mwh": 13.281923700553591,
+      "mean_mae_improvement_fraction": -0.05189721801601849,
+      "worst_fold_improvement_fraction": -0.12114070976744833
+    },
+    "causal_errors_only": {
+      "feature_count": 8,
+      "features": [
+        "weather_error_source_available_flag",
+        "weather_wind_error_latest_mps",
+        "weather_wind_error_bias_24h_mps",
+        "weather_wind_error_mae_24h_mps",
+        "weather_temperature_error_bias_24h_c",
+        "weather_irradiance_error_bias_24h_wm2",
+        "weather_irradiance_error_mae_24h_wm2",
+        "weather_error_observation_count_24h"
+      ],
+      "folds": [
+        {
+          "fold": "train_rolling_1",
+          "fit_rows": 802,
+          "score_rows": 400,
+          "baseline_mae_mwh": 23.422916286747878,
+          "candidate_mae_mwh": 23.448392485298687,
+          "mae_improvement_fraction": -0.0010876612561358458
+        },
+        {
+          "fold": "train_rolling_2",
+          "fit_rows": 1202,
+          "score_rows": 402,
+          "baseline_mae_mwh": 2.2008774645649014,
+          "candidate_mae_mwh": 2.1693663673057157,
+          "mae_improvement_fraction": 0.014317515521208352
+        },
+        {
+          "fold": "train_rolling_3",
+          "fit_rows": 1604,
+          "score_rows": 402,
+          "baseline_mae_mwh": 9.559334993123278,
+          "candidate_mae_mwh": 9.473631079201379,
+          "mae_improvement_fraction": 0.008965468202919108
+        },
+        {
+          "fold": "validation",
+          "fit_rows": 2006,
+          "score_rows": 430,
+          "baseline_mae_mwh": 15.00448640915832,
+          "candidate_mae_mwh": 15.333754540106044,
+          "mae_improvement_fraction": -0.021944645219362423
+        }
+      ],
+      "mean_baseline_mae_mwh": 12.546903788398593,
+      "mean_candidate_mae_mwh": 12.606286117977955,
+      "mean_mae_improvement_fraction": 6.266931215729785e-05,
+      "worst_fold_improvement_fraction": -0.021944645219362423
+    },
+    "wind_aggregate_only": {
+      "feature_count": 12,
+      "features": [
+        "weather_wind_region_coverage_ratio",
+        "weather_wind_weighted_speed_100m_mps",
+        "weather_wind_weighted_u_100m_mps",
+        "weather_wind_weighted_v_100m_mps",
+        "weather_wind_weighted_gust_10m_mps",
+        "weather_wind_weighted_gust_excess_mps",
+        "weather_wind_speed_spatial_spread_mps",
+        "weather_wind_gust_spatial_spread_mps",
+        "weather_wind_weighted_pressure_tendency_3h_hpa",
+        "weather_wind_error_latest_mps",
+        "weather_wind_error_bias_24h_mps",
+        "weather_wind_error_mae_24h_mps"
+      ],
+      "folds": [
+        {
+          "fold": "train_rolling_1",
+          "fit_rows": 802,
+          "score_rows": 400,
+          "baseline_mae_mwh": 23.422916286747878,
+          "candidate_mae_mwh": 25.3102658428718,
+          "mae_improvement_fraction": -0.08057705253345158
+        },
+        {
+          "fold": "train_rolling_2",
+          "fit_rows": 1202,
+          "score_rows": 402,
+          "baseline_mae_mwh": 2.2008774645649014,
+          "candidate_mae_mwh": 2.748236416288905,
+          "mae_improvement_fraction": -0.24870032999870476
+        },
+        {
+          "fold": "train_rolling_3",
+          "fit_rows": 1604,
+          "score_rows": 402,
+          "baseline_mae_mwh": 9.559334993123278,
+          "candidate_mae_mwh": 8.559964463955469,
+          "mae_improvement_fraction": 0.1045439384524895
+        },
+        {
+          "fold": "validation",
+          "fit_rows": 2006,
+          "score_rows": 430,
+          "baseline_mae_mwh": 15.00448640915832,
+          "candidate_mae_mwh": 15.553054065427967,
+          "mae_improvement_fraction": -0.03656024213763268
+        }
+      ],
+      "mean_baseline_mae_mwh": 12.546903788398593,
+      "mean_candidate_mae_mwh": 13.042880197136034,
+      "mean_mae_improvement_fraction": -0.06532342155432488,
+      "worst_fold_improvement_fraction": -0.24870032999870476
+    },
+    "solar_aggregate_only": {
+      "feature_count": 4,
+      "features": [
+        "weather_solar_region_coverage_ratio",
+        "weather_solar_weighted_temperature_2m_c",
+        "weather_solar_weighted_cloud_cover_pct",
+        "weather_solar_weighted_shortwave_radiation_wm2"
+      ],
+      "folds": [
+        {
+          "fold": "train_rolling_1",
+          "fit_rows": 802,
+          "score_rows": 400,
+          "baseline_mae_mwh": 23.422916286747878,
+          "candidate_mae_mwh": 24.031524345128265,
+          "mae_improvement_fraction": -0.025983445055674934
+        },
+        {
+          "fold": "train_rolling_2",
+          "fit_rows": 1202,
+          "score_rows": 402,
+          "baseline_mae_mwh": 2.2008774645649014,
+          "candidate_mae_mwh": 2.2321569224554945,
+          "mae_improvement_fraction": -0.014212266877282416
+        },
+        {
+          "fold": "train_rolling_3",
+          "fit_rows": 1604,
+          "score_rows": 402,
+          "baseline_mae_mwh": 9.559334993123278,
+          "candidate_mae_mwh": 9.445781233323693,
+          "mae_improvement_fraction": 0.011878834655472587
+        },
+        {
+          "fold": "validation",
+          "fit_rows": 2006,
+          "score_rows": 430,
+          "baseline_mae_mwh": 15.00448640915832,
+          "candidate_mae_mwh": 15.064077644077736,
+          "mae_improvement_fraction": -0.003971561124747576
+        }
+      ],
+      "mean_baseline_mae_mwh": 12.546903788398593,
+      "mean_candidate_mae_mwh": 12.693385036246296,
+      "mean_mae_improvement_fraction": -0.008072109600558085,
+      "worst_fold_improvement_fraction": -0.025983445055674934
+    }
+  },
+  "status": "rejected_development_gate",
+  "production_decision": "exclude",
+  "reason": "Candidate did not clear the 15% mean per-fold MAE gate with no degrading fold.",
+  "final_test_accessed": false
+}
