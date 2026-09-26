@@ -3,6 +3,7 @@
   "experiment_id": "optional-horizon-residual-v2",
   "benchmark_contract_path": "config/benchmark_contract.v2.json",
   "baseline_model_version": "1.1.0",
+  "source_publication_verified": false,
   "candidate_families": ["all_v1_features", "all_v1_features_plus_physical_interactions"],
   "estimator": {
     "type": "horizon_specific_extra_trees_residual",

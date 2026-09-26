@@ -1,0 +1,45 @@
+{
+  "experiment_id": "multi-year-vs-v1-same-rows-v1",
+  "history_sha256": "48c374974a504c838201bb7c6c8356863d69844ce93982bf172f07c2416ad454",
+  "historical_source_rows": 99310,
+  "historical_training_rows": 140157,
+  "historical_feature_count": 39,
+  "historical_train_target_max_utc": "2024-12-31T23:30:00+00:00",
+  "observation_delay_hours": 24,
+  "publication_latency_verified": false,
+  "development": {
+    "rows": 1622,
+    "v1_mae_mwh": 10.09466909679408,
+    "candidate_mae_mwh": 78.2216535767271,
+    "mae_improvement_fraction": -6.748808091348845,
+    "folds": [
+      {
+        "fold": "train_fold_1",
+        "rows": 397,
+        "v1_mae_mwh": 16.748217317380348,
+        "candidate_mae_mwh": 145.21600302694205
+      },
+      {
+        "fold": "train_fold_2",
+        "rows": 399,
+        "v1_mae_mwh": 2.122407330827069,
+        "candidate_mae_mwh": 56.803701358956005
+      },
+      {
+        "fold": "train_fold_3",
+        "rows": 399,
+        "v1_mae_mwh": 7.70464060150376,
+        "candidate_mae_mwh": 54.62850154158388
+      },
+      {
+        "fold": "validation_fold",
+        "rows": 427,
+        "v1_mae_mwh": 13.591379098360655,
+        "candidate_mae_mwh": 57.99372351859475
+      }
+    ]
+  },
+  "sealed_final_scored": false,
+  "serving_eligible": false,
+  "artifact_created": false
+}

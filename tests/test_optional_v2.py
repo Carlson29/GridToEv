@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from gridtoev.optional_v2_experiment import FamilyScore, _eligible
+from gridtoev.optional_v2_experiment import FamilyScore, _eligible, is_final_artifact_eligible
 from gridtoev.optional_v2 import (
     HorizonResidualModel,
     blend_predictions,
@@ -82,6 +82,11 @@ class OptionalV2Tests(unittest.TestCase):
         )
         self.assertTrue(_eligible(score, 0.03, 0.0))
         self.assertFalse(_eligible(score, 0.03, 0.02))
+
+    def test_final_artifact_requires_verified_asof_features(self) -> None:
+        self.assertFalse(is_final_artifact_eligible(9.0, 10.0, 0.0, publication_verified=False))
+        self.assertFalse(is_final_artifact_eligible(10.0, 10.0, 0.0, publication_verified=True))
+        self.assertTrue(is_final_artifact_eligible(9.0, 10.0, 0.0, publication_verified=True))
 
 
 if __name__ == "__main__":

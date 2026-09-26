@@ -110,6 +110,21 @@ def _eligible(score: FamilyScore, max_horizon_regression: float, minimum_improve
     )
 
 
+def is_final_artifact_eligible(
+    candidate_mae: float,
+    baseline_mae: float,
+    minimum_improvement: float,
+    *,
+    publication_verified: bool,
+) -> bool:
+    """Fail closed when source timestamps do not establish as-of availability."""
+
+    return bool(
+        publication_verified
+        and candidate_mae < baseline_mae * (1 - minimum_improvement)
+    )
+
+
 def run(
     *,
     dataset_path: Path = DEFAULT_DATASET_PATH,
@@ -250,7 +265,12 @@ def run(
             }
         )
         minimum_final_improvement = float(config["experimental_artifact_gate"]["final_test_mae_improvement_min"])
-        if final_mae < baseline_final_mae * (1 - minimum_final_improvement):
+        if is_final_artifact_eligible(
+            final_mae,
+            baseline_final_mae,
+            minimum_final_improvement,
+            publication_verified=bool(config["source_publication_verified"]),
+        ):
             artifact = {
                 "metadata": {
                     "model_version": "2.0.0-experimental",

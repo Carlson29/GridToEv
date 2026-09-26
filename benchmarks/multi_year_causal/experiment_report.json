@@ -1,0 +1,119 @@
+{
+  "development": {
+    "aggregate_mae_improvement_fraction": 0.05833876575164342,
+    "baseline_mae_mwh": 131.5698605916355,
+    "candidate_mae_mwh": 123.89423731460369,
+    "checks": {
+      "aggregate_improvement": false,
+      "both_horizons": true,
+      "fold_stability": false,
+      "label_maturity": true
+    },
+    "folds": [
+      {
+        "baseline_mae_mwh": 122.86058358560378,
+        "by_horizon": {
+          "30": {
+            "baseline_mae_mwh": 122.10284936112981,
+            "candidate_mae_mwh": 125.38357398263328,
+            "fit_rows": 93359,
+            "mae_improvement_fraction": -0.026868534507335187,
+            "rows": 1487
+          },
+          "60": {
+            "baseline_mae_mwh": 123.61882772543744,
+            "candidate_mae_mwh": 126.12202277170397,
+            "fit_rows": 93358,
+            "mae_improvement_fraction": -0.02024930257247081,
+            "rows": 1486
+          }
+        },
+        "candidate_mae_mwh": 125.75267418463767,
+        "fit_target_max_utc": "2026-04-30T23:30:00+00:00",
+        "label_maturity_verified": true,
+        "mae_improvement_fraction": -0.023539613068977592,
+        "month_utc": "2026-05",
+        "rows": 2973,
+        "score_end_exclusive_utc": "2026-06-01T00:00:00+00:00",
+        "score_issue_min_utc": "2026-05-01T00:00:00+00:00",
+        "score_target_max_utc": "2026-05-31T23:30:00+00:00"
+      },
+      {
+        "baseline_mae_mwh": 153.65498957247132,
+        "by_horizon": {
+          "30": {
+            "baseline_mae_mwh": 152.8377192494788,
+            "candidate_mae_mwh": 132.74582323802218,
+            "fit_rows": 94847,
+            "mae_improvement_fraction": 0.13145901489579528,
+            "rows": 1439
+          },
+          "60": {
+            "baseline_mae_mwh": 154.47282823365785,
+            "candidate_mae_mwh": 136.4670820645177,
+            "fit_rows": 94846,
+            "mae_improvement_fraction": 0.11656254614503714,
+            "rows": 1438
+          }
+        },
+        "candidate_mae_mwh": 134.6058059257179,
+        "fit_target_max_utc": "2026-05-31T23:30:00+00:00",
+        "label_maturity_verified": true,
+        "mae_improvement_fraction": 0.12397373947800686,
+        "month_utc": "2026-06",
+        "rows": 2877,
+        "score_end_exclusive_utc": "2026-07-01T00:00:00+00:00",
+        "score_issue_min_utc": "2026-06-01T00:00:00+00:00",
+        "score_target_max_utc": "2026-06-30T23:30:00+00:00"
+      },
+      {
+        "baseline_mae_mwh": 118.90715102589975,
+        "by_horizon": {
+          "30": {
+            "baseline_mae_mwh": 118.37194620040349,
+            "candidate_mae_mwh": 111.55594630586015,
+            "fit_rows": 96287,
+            "mae_improvement_fraction": 0.05758121001917011,
+            "rows": 1487
+          },
+          "60": {
+            "baseline_mae_mwh": 119.44271601615073,
+            "candidate_mae_mwh": 111.78436047827456,
+            "fit_rows": 96286,
+            "mae_improvement_fraction": 0.06411739278300252,
+            "rows": 1486
+          }
+        },
+        "candidate_mae_mwh": 111.67011497730576,
+        "fit_target_max_utc": "2026-06-30T23:30:00+00:00",
+        "label_maturity_verified": true,
+        "mae_improvement_fraction": 0.060862916873835944,
+        "month_utc": "2026-07",
+        "rows": 2973,
+        "score_end_exclusive_utc": "2026-08-01T00:00:00+00:00",
+        "score_issue_min_utc": "2026-07-01T00:00:00+00:00",
+        "score_target_max_utc": "2026-07-31T23:30:00+00:00"
+      }
+    ],
+    "horizon_mae_improvement_fraction": {
+      "30": 0.059165435540551925,
+      "60": 0.057520318257896115
+    },
+    "passed": false
+  },
+  "experiment_id": "multi-year-causal-point-v1",
+  "feature_count": 39,
+  "model_rows": 198521,
+  "observation_delay_hours": 24,
+  "publication_latency_verified": false,
+  "release": {
+    "candidate_approved": false,
+    "reason": "Point-only research on a different feature population; publication latency, live ingestion, v2-comparable baseline, event and interval gates remain unverified."
+  },
+  "sealed_final": {
+    "accessed": false,
+    "score": null
+  },
+  "source_rows": 99310,
+  "source_sha256": "48c374974a504c838201bb7c6c8356863d69844ce93982bf172f07c2416ad454"
+}
