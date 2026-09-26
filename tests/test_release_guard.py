@@ -43,6 +43,27 @@ class ReleaseGuardTests(unittest.TestCase):
             with self.assertRaises(ReleaseAuthorizationError):
                 service.load()
 
+    def test_unverified_rollback_report_rejects_even_pinned_model(self) -> None:
+        baseline = ROOT / "models" / "gridtoev_model_bundle.joblib"
+        report = json.loads(DEFAULT_REPORT_PATH.read_text(encoding="utf-8"))
+        report["rollback"]["verified"] = False
+        with tempfile.TemporaryDirectory() as directory:
+            report_path = Path(directory) / "release.json"
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+            with self.assertRaisesRegex(ReleaseAuthorizationError, "rollback"):
+                verify_model_authorization(baseline, report_path)
+
+    def test_report_feature_hash_must_match_loaded_bundle(self) -> None:
+        baseline = ROOT / "models" / "gridtoev_model_bundle.joblib"
+        report = json.loads(DEFAULT_REPORT_PATH.read_text(encoding="utf-8"))
+        report["feature_contract"]["sha256"] = "0" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            report_path = Path(directory) / "release.json"
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+            service = PredictionService(baseline, None, release_report_path=report_path)
+            with self.assertRaisesRegex(ReleaseAuthorizationError, "feature contract"):
+                service.load()
+
     def test_loaded_default_model_exposes_release_status(self) -> None:
         service = PredictionService(
             ROOT / "models" / "gridtoev_model_bundle.joblib",

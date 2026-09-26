@@ -82,6 +82,8 @@ def verify_model_authorization(model_path: Path | str, report_path: Path | str) 
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     if report.get("contract_id") != contract["contract_id"]:
         raise ReleaseAuthorizationError("Release report does not match the v2 contract")
+    if not report.get("rollback", {}).get("verified", False):
+        raise ReleaseAuthorizationError("Release report rollback verification failed")
     expected_baseline = (PROJECT_ROOT / contract["frozen_baseline"]["model_artifact_path"]).resolve()
     if model_path == expected_baseline:
         expected_hash = contract["frozen_baseline"]["model_artifact_sha256"]

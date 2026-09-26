@@ -15,7 +15,11 @@ from .constants import (
     INTERVAL_HOURS,
     SUPPORTED_FORECAST_HORIZONS,
 )
-from .release_guard import feature_contract_sha256, verify_model_authorization
+from .release_guard import (
+    ReleaseAuthorizationError,
+    feature_contract_sha256,
+    verify_model_authorization,
+)
 
 
 class FeatureValidationError(ValueError):
@@ -68,6 +72,22 @@ class PredictionService:
             raise ValueError("Model bundle feature order disagrees with metadata")
         if tuple(bundle["metadata"].get("forecast_horizons_minutes", [])) != SUPPORTED_FORECAST_HORIZONS:
             raise ValueError("Model bundle forecast horizons are incompatible with this API")
+        if self.release_report_path is not None:
+            release = json.loads(self.release_report_path.read_text(encoding="utf-8"))
+            expected_contract = (
+                release.get("candidate", {}).get("feature_contract_sha256")
+                if release.get("decision", {}).get("candidate_approved")
+                else release.get("feature_contract", {}).get("sha256")
+            )
+            if feature_contract_sha256(bundle["feature_columns"]) != expected_contract:
+                raise ReleaseAuthorizationError("Loaded model feature contract does not match release report")
+            expected_version = (
+                release.get("candidate", {}).get("model_version")
+                if release.get("decision", {}).get("candidate_approved")
+                else release.get("active_model_version")
+            )
+            if bundle["metadata"].get("model_version") != expected_version:
+                raise ReleaseAuthorizationError("Loaded model version does not match release report")
         self.bundle = bundle
 
         if self.dataset_path is not None:
