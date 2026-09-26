@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -79,12 +80,14 @@ def verify_model_authorization(model_path: Path | str, report_path: Path | str) 
     """Check bytes before joblib deserialization; an alternate path needs approval."""
     model_path = Path(model_path).resolve()
     report = json.loads(Path(report_path).read_text(encoding="utf-8"))
-    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    contract_path = Path(os.getenv("GRIDTOEV_CONTRACT_PATH", str(CONTRACT_PATH))).resolve()
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    project_root = contract_path.parent.parent
     if report.get("contract_id") != contract["contract_id"]:
         raise ReleaseAuthorizationError("Release report does not match the v2 contract")
     if not report.get("rollback", {}).get("verified", False):
         raise ReleaseAuthorizationError("Release report rollback verification failed")
-    expected_baseline = (PROJECT_ROOT / contract["frozen_baseline"]["model_artifact_path"]).resolve()
+    expected_baseline = (project_root / contract["frozen_baseline"]["model_artifact_path"]).resolve()
     if model_path == expected_baseline:
         expected_hash = contract["frozen_baseline"]["model_artifact_sha256"]
     else:
@@ -92,7 +95,7 @@ def verify_model_authorization(model_path: Path | str, report_path: Path | str) 
         if not report.get("decision", {}).get("candidate_approved"):
             raise ReleaseAuthorizationError("Alternate model has not passed release gates")
         approved_path = candidate.get("artifact_path")
-        if not approved_path or model_path != (PROJECT_ROOT / approved_path).resolve():
+        if not approved_path or model_path != (project_root / approved_path).resolve():
             raise ReleaseAuthorizationError("Alternate model path is not approved")
         expected_hash = candidate.get("artifact_sha256")
     if not expected_hash or not model_path.exists() or sha256_file(model_path) != expected_hash:

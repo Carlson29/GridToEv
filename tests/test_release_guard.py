@@ -1,8 +1,11 @@
 import json
+import hashlib
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +66,23 @@ class ReleaseGuardTests(unittest.TestCase):
             service = PredictionService(baseline, None, release_report_path=report_path)
             with self.assertRaisesRegex(ReleaseAuthorizationError, "feature contract"):
                 service.load()
+
+    def test_container_contract_override_authorizes_baseline_under_app_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config").mkdir()
+            (root / "models").mkdir()
+            model = root / "models" / "gridtoev_model_bundle.joblib"
+            model.write_bytes(b"test pinned bytes")
+            contract = json.loads((ROOT / "config" / "benchmark_contract.v2.json").read_text(encoding="utf-8"))
+            contract["frozen_baseline"]["model_artifact_sha256"] = hashlib.sha256(model.read_bytes()).hexdigest()
+            contract_path = root / "config" / "benchmark_contract.v2.json"
+            contract_path.write_text(json.dumps(contract), encoding="utf-8")
+            report = json.loads(DEFAULT_REPORT_PATH.read_text(encoding="utf-8"))
+            report_path = root / "release.json"
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+            with patch.dict(os.environ, {"GRIDTOEV_CONTRACT_PATH": str(contract_path)}):
+                verify_model_authorization(model, report_path)
 
     def test_loaded_default_model_exposes_release_status(self) -> None:
         service = PredictionService(

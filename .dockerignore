@@ -5,8 +5,6 @@
 **/*.pyc
 .ipynb_checkpoints
 .pytest_cache
-benchmarks
-config
 docs
 examples
 notebooks

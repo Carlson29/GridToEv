@@ -27,6 +27,9 @@ fields. Dataset/date guidance, the 48-hour historical replay limit, and
 weather or grid conditions without a live feature source.
 
 The default report path can be overridden with `GRIDTOEV_RELEASE_REPORT_PATH`.
+The Docker image sets that path and `GRIDTOEV_CONTRACT_PATH` explicitly under
+`/app` and copies both files; an installed Python package may otherwise have
+a different filesystem root.
 The model path can be overridden with `GRIDTOEV_MODEL_PATH`, but a different
 model will fail startup until its candidate release is genuinely approved.
 Keep `GRIDTOEV_API_KEY` configured on a shared deployment.
