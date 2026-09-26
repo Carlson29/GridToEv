@@ -102,6 +102,41 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_optional_daily_model_does_not_change_v1_when_unconfigured(self) -> None:
+        response = self.client.post(
+            "/predict/curtailment/day", json={"target_date_utc": "2026-09-26"}
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.client.get("/health").status_code, 200)
+
+    def test_daily_endpoint_has_a_separate_prediction_contract(self) -> None:
+        class FakeDailyService:
+            bundle = {"metadata": {"model_version": "2.0.0-daily-experimental"}}
+
+            def load(self):
+                pass
+
+            def predict_date(self, target_date):
+                return {
+                    "model_version": "2.0.0-daily-experimental",
+                    "experimental": True,
+                    "target_date_utc": target_date.isoformat(),
+                    "issue_timestamp_utc": f"{target_date.isoformat()}T00:00:00+00:00",
+                    "forecast_max_available_at_utc": "2026-09-25T23:00:00+00:00",
+                    "curtailment_event_probability": 0.7,
+                    "predicted_curtailment_mwh": 1200.0,
+                    "target": "Total EirGrid curtailment during this UTC day",
+                }
+
+        with TestClient(create_app(self.client.app.state.prediction_service, FakeDailyService())) as client:
+            response = client.post(
+                "/predict/curtailment/day", json={"target_date_utc": "2026-09-26"}
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["target_date_utc"], "2026-09-26")
+            self.assertEqual(client.get("/model-info/daily-curtailment").json()["model_version"],
+                             "2.0.0-daily-experimental")
+
 
 if __name__ == "__main__":
     unittest.main()

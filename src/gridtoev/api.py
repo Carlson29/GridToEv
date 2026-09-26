@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
+from .daily_model import DailyCurtailmentService
 from .inference import FeatureValidationError, PredictionService
 
 
@@ -52,6 +53,23 @@ class LatestPredictionsResponse(BaseModel):
     predictions: list[PredictionResponse]
 
 
+class DailyCurtailmentRequest(BaseModel):
+    target_date_utc: date = Field(
+        description="UTC calendar day in YYYY-MM-DD format, from 2024-04-01 through the current UTC day. The forecast is issued at 00:00 UTC on that day."
+    )
+
+
+class DailyCurtailmentResponse(BaseModel):
+    model_version: str
+    experimental: bool
+    target_date_utc: str
+    issue_timestamp_utc: str
+    forecast_max_available_at_utc: str
+    curtailment_event_probability: float
+    predicted_curtailment_mwh: float
+    target: str
+
+
 def _default_service() -> PredictionService:
     return PredictionService(
         model_path=os.getenv("GRIDTOEV_MODEL_PATH", str(DEFAULT_MODEL_PATH)),
@@ -59,14 +77,24 @@ def _default_service() -> PredictionService:
     )
 
 
-def create_app(service: PredictionService | None = None) -> FastAPI:
+def create_app(
+    service: PredictionService | None = None,
+    daily_service: DailyCurtailmentService | None = None,
+) -> FastAPI:
     prediction_service = service or _default_service()
+    daily_model_path = os.getenv("GRIDTOEV_DAILY_MODEL_PATH")
+    optional_daily_service = daily_service or (
+        DailyCurtailmentService(daily_model_path) if daily_model_path else None
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if not prediction_service.loaded:
             prediction_service.load()
         app.state.prediction_service = prediction_service
+        if optional_daily_service is not None:
+            optional_daily_service.load()
+        app.state.daily_curtailment_service = optional_daily_service
         yield
 
     app = FastAPI(
@@ -102,6 +130,23 @@ def create_app(service: PredictionService | None = None) -> FastAPI:
     @app.get("/model-info")
     def model_info() -> dict[str, Any]:
         return prediction_service.model_info()
+
+    @app.get("/model-info/daily-curtailment")
+    def daily_model_info() -> dict[str, Any]:
+        if optional_daily_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is not configured; set GRIDTOEV_DAILY_MODEL_PATH")
+        return optional_daily_service.bundle["metadata"]
+
+    @app.post("/predict/curtailment/day", response_model=DailyCurtailmentResponse)
+    def predict_daily_curtailment(request: DailyCurtailmentRequest) -> dict[str, Any]:
+        if optional_daily_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is not configured; set GRIDTOEV_DAILY_MODEL_PATH")
+        try:
+            return optional_daily_service.predict_date(request.target_date_utc)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except (OSError, TimeoutError) as error:
+            raise HTTPException(status_code=503, detail=f"Forecast source unavailable: {error}") from error
 
     @app.get("/dataset/available-times")
     def available_times(
