@@ -23,6 +23,30 @@ from .release_guard import DEFAULT_REPORT_PATH
 ForecastHorizon = Literal[30, 60]
 logger = logging.getLogger(__name__)
 
+TAG_SERVICE = "Service"
+TAG_V1 = "V1 — 30/60-minute model"
+TAG_V2 = "V2 — daily curtailment model"
+TAG_ACTUALS = "Observed outcomes"
+
+API_DESCRIPTION = """## Choose the right model
+
+| Model | Predicts | Input | Start here |
+| --- | --- | --- | --- |
+| **V1: 30/60-minute** | Renewable **dispatch-down** risk and MWh at one target half-hour, 30 or 60 minutes after an issue time. | A historical dataset issue timestamp and horizon, or a complete live feature snapshot. | `GET /dataset/info` for valid historical dates; `POST /predict/from-dataset` for a simple example. |
+| **V2: daily curtailment (experimental)** | Whether **curtailment** occurs and total curtailment MWh over one UTC calendar day. This is a different target and time scale from v1. | One UTC target date (`YYYY-MM-DD`), no feature values required. | `GET /dataset/daily-curtailment/coverage`, then `POST /predict/curtailment/day`. |
+
+V1's dataset replay endpoints use a **fixed historical dataset**. In particular, `/predict/latest` means the latest *dataset row*, **not the current time**. A v1 window is repeated 30/60-minute predictions, **not a day-ahead forecast**. V2 fetches archived day-ahead weather inputs for the selected date; dates through the current UTC day can be requested, but source coverage is not guaranteed. The version shown in the Swagger header does not choose a model; each prediction reports its own `model_version`.
+
+Send the shared `X-API-Key` using **Authorize** for protected routes. `GET /health` is public and shows whether optional v2 loaded. To compare a prediction with reality, copy `target_timestamp_utc` from v1 to `/actuals/v1`, or `target_date_utc` from v2 to `/actuals/daily-curtailment`. Actuals come from a separately refreshed EirGrid snapshot and may be `pending` or `missing`.
+"""
+
+OPENAPI_TAGS = [
+    {"name": TAG_SERVICE, "description": "Public service readiness. V1 readiness and optional V2 availability are reported separately."},
+    {"name": TAG_V1, "description": "V1 predicts 30- or 60-minute-ahead renewable dispatch-down from a historical half-hour dataset or a full feature snapshot."},
+    {"name": TAG_V2, "description": "Experimental V2 predicts curtailment event probability and total MWh for a whole UTC day."},
+    {"name": TAG_ACTUALS, "description": "Observed EirGrid outcomes for V1 half-hours and V2 complete UTC days; these are not model predictions."},
+]
+
 
 def _require_timezone(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
@@ -79,40 +103,45 @@ class DatasetWindowPredictionRequest(BaseModel):
             "Choose 30, 60, or both."
         ),
     )
-    flexible_load_capacity_mw: float = Field(default=100.0, gt=0, le=10000)
+    flexible_load_capacity_mw: float = Field(
+        default=100.0, gt=0, le=10000,
+        description="Optional EV/flexible-load capacity in MW used for each v1 surplus estimate.",
+    )
 
     _validate_start_timestamp = field_validator("start_timestamp_utc")(_require_timezone)
 
 
 class FeaturePredictionRequest(BaseModel):
     issue_timestamp_utc: datetime = Field(
-        description="Feature snapshot time in ISO 8601 format with timezone.",
+        description="V1 issue time in timezone-aware ISO 8601 UTC format; this is when the complete feature snapshot is known.",
         examples=["2026-01-15T12:30:00Z"],
     )
-    forecast_horizon_minutes: ForecastHorizon
-    flexible_load_capacity_mw: float = Field(default=100.0, gt=0, le=10000)
-    features: dict[str, float]
+    forecast_horizon_minutes: ForecastHorizon = Field(description="V1 target is 30 or 60 minutes after the issue time.")
+    flexible_load_capacity_mw: float = Field(default=100.0, gt=0, le=10000, description="Optional EV/flexible-load capacity in MW.")
+    features: dict[str, float] = Field(
+        description="Complete V1 numeric feature snapshot. GET /model-info lists every required_live_features key; a small partial object is not sufficient."
+    )
 
     _validate_issue_timestamp = field_validator("issue_timestamp_utc")(_require_timezone)
 
 
 class PredictionResponse(BaseModel):
-    model_version: str
-    issue_timestamp_utc: str
-    target_timestamp_utc: str
-    forecast_horizon_minutes: int
-    dispatch_down_probability: float
-    dispatch_down_event_prediction: bool
-    classification_threshold: float
-    risk_level: Literal["low", "medium", "high"]
-    predicted_dispatch_down_mwh: float
-    predicted_curtailment_mwh: float
-    predicted_constraint_mwh: float
-    prediction_interval_p10_mwh: float
-    prediction_interval_p50_mwh: float
-    prediction_interval_p90_mwh: float
-    flexible_load_capacity_mw: float
-    recoverable_surplus_mwh: float
+    model_version: str = Field(description="V1 short-horizon model version.")
+    issue_timestamp_utc: str = Field(description="UTC time at which the V1 forecast is made.")
+    target_timestamp_utc: str = Field(description="UTC half-hour whose dispatch-down outcome is predicted; use this key for /actuals/v1.")
+    forecast_horizon_minutes: int = Field(description="Minutes between issue and target time: 30 or 60.")
+    dispatch_down_probability: float = Field(description="Estimated probability that any renewable dispatch-down occurs at the target half-hour.")
+    dispatch_down_event_prediction: bool = Field(description="Yes/no flag after applying classification_threshold.")
+    classification_threshold: float = Field(description="Probability threshold used for the yes/no event flag.")
+    risk_level: Literal["low", "medium", "high"] = Field(description="Display category based on predicted dispatch-down risk.")
+    predicted_dispatch_down_mwh: float = Field(description="Predicted total dispatched-down renewable energy in the target half-hour, MWh.")
+    predicted_curtailment_mwh: float = Field(description="Predicted curtailment component of V1 dispatch-down, MWh; not a whole-day V2 prediction.")
+    predicted_constraint_mwh: float = Field(description="Predicted network-constraint component of V1 dispatch-down, MWh.")
+    prediction_interval_p10_mwh: float = Field(description="Lower uncertainty estimate for dispatch-down MWh.")
+    prediction_interval_p50_mwh: float = Field(description="Middle uncertainty estimate for dispatch-down MWh.")
+    prediction_interval_p90_mwh: float = Field(description="Upper uncertainty estimate for dispatch-down MWh.")
+    flexible_load_capacity_mw: float = Field(description="Flexible-load capacity supplied in the request, MW.")
+    recoverable_surplus_mwh: float = Field(description="Estimated V1 dispatch-down energy that the flexible load could absorb, MWh.")
 
 
 class LatestPredictionsResponse(BaseModel):
@@ -121,54 +150,85 @@ class LatestPredictionsResponse(BaseModel):
 
 class DailyCurtailmentRequest(BaseModel):
     target_date_utc: date = Field(
-        description="UTC calendar day in YYYY-MM-DD format, from 2024-04-01 through the current UTC day. The forecast is issued at 00:00 UTC on that day."
+        description="V2 target UTC calendar day in YYYY-MM-DD format, from 2024-04-01 through the current UTC day. No future day or feature object. The forecast is issued at 00:00 UTC on that day.",
+        examples=["2026-08-30"],
     )
 
 
 class DailyCurtailmentResponse(BaseModel):
-    model_version: str
-    experimental: bool
-    target_date_utc: str
-    issue_timestamp_utc: str
-    forecast_max_available_at_utc: str
-    curtailment_event_probability: float
-    predicted_curtailment_mwh: float
-    target: str
+    model_version: str = Field(description="V2 daily curtailment model version.")
+    experimental: bool = Field(description="True: V2 remains experimental and should not be used as a dispatch instruction.")
+    target_date_utc: str = Field(description="UTC day predicted; copy this to /actuals/daily-curtailment for the observed outcome.")
+    issue_timestamp_utc: str = Field(description="00:00 UTC at the start of the target day.")
+    forecast_max_available_at_utc: str = Field(description="Latest assumed availability time among the archived forecast inputs, before issue time.")
+    curtailment_event_probability: float = Field(description="Probability that any curtailment occurs during this UTC day, between 0 and 1.")
+    predicted_curtailment_mwh: float = Field(description="Estimated total curtailment energy over the full UTC day, MWh; not an hourly series.")
+    target: str = Field(description="Plain-language definition of the V2 prediction target.")
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ready"] = Field(description="V1 service readiness; v2 can be unavailable while this remains ready.")
+    model_version: str = Field(description="Active V1 model version, not the V2 version.")
+    dataset_loaded: bool = Field(description="Whether the historical V1 replay dataset is loaded.")
+    daily_model_available: bool = Field(description="Whether the optional V2 daily model loaded successfully.")
+
+
+class DailyCoveragePartition(BaseModel):
+    first_target_date_utc: date = Field(description="First complete UTC day in this historical split.")
+    last_target_date_utc: date = Field(description="Last complete UTC day in this historical split.")
+    complete_day_count: int = Field(description="Number of complete, valid 48-half-hour days in this split.")
+
+
+class DailyDatasetCoverageResponse(BaseModel):
+    model_version: str = Field(description="Experimental daily V2 model, not V1.")
+    historical_date_min_utc: date = Field(description="First complete day in the frozen V2 development/evaluation dataset.")
+    historical_date_max_utc: date = Field(description="Last complete day in that frozen dataset; not the latest requestable day.")
+    historical_complete_day_count: int = Field(description="Total complete labelled days across training, validation and test splits.")
+    partitions: dict[str, DailyCoveragePartition] = Field(description="Historical train, validation and untouched test coverage. The fitted model uses train plus validation, not test labels.")
+    fitted_through_date_utc: date = Field(description="Last UTC day whose label was used to fit the deployed model.")
+    requestable_date_min_utc: date = Field(description="Earliest date supported by the archived forecast-source convention.")
+    requestable_date_max_utc: date = Field(description="Current UTC day; future days cannot be requested.")
+    date_format: Literal["YYYY-MM-DD"]
+    timezone: Literal["UTC"]
+    dataset_sha256: str = Field(description="Checksum of the frozen historical V2 modelling dataset.")
+    forecast_source: str = Field(description="Sources used for V2 labels and weather forecasts.")
+    request_notice: str = Field(description="Why historical dataset coverage and requestable-date range differ; actuals have separate coverage.")
 
 
 class PointActualResponse(BaseModel):
-    status: Literal["available", "pending", "missing"]
-    target_timestamp_utc: str
-    source_latest_timestamp_utc: str
-    actual_dispatch_down_mwh: float | None
-    actual_curtailment_mwh: float | None
-    actual_constraint_mwh: float | None
-    actual_dispatch_down_event: bool | None
+    status: Literal["available", "pending", "missing"] = Field(description="Available: valid observed half-hour; pending: later than archive; missing: no valid row inside coverage.")
+    target_timestamp_utc: str = Field(description="V1 target half-hour looked up.")
+    source_latest_timestamp_utc: str = Field(description="Latest half-hour timestamp in the bundled actuals snapshot.")
+    actual_dispatch_down_mwh: float | None = Field(description="Observed dispatch-down MWh, or null when unavailable.")
+    actual_curtailment_mwh: float | None = Field(description="Observed curtailment component MWh, or null when unavailable.")
+    actual_constraint_mwh: float | None = Field(description="Observed constraint component MWh, or null when unavailable.")
+    actual_dispatch_down_event: bool | None = Field(description="Whether observed dispatch-down was positive, or null when unavailable.")
 
 
 class DailyActualResponse(BaseModel):
-    status: Literal["available", "pending", "missing"]
-    target_date_utc: str
-    source_latest_timestamp_utc: str
-    actual_curtailment_mwh: float | None
-    actual_curtailment_event: bool | None
-    complete_half_hour_count: int
+    status: Literal["available", "pending", "missing"] = Field(description="Available only when all 48 UTC half-hours have valid labels; otherwise pending or missing.")
+    target_date_utc: str = Field(description="V2 target UTC day looked up.")
+    source_latest_timestamp_utc: str = Field(description="Latest half-hour timestamp in the bundled actuals snapshot.")
+    actual_curtailment_mwh: float | None = Field(description="Observed full-day curtailment MWh, or null when unavailable.")
+    actual_curtailment_event: bool | None = Field(description="Whether observed full-day curtailment was positive, or null when unavailable.")
+    complete_half_hour_count: int = Field(description="48 for an available complete UTC day, otherwise 0.")
 
 
 class ActualsCoverageResponse(BaseModel):
-    source: str
-    available_target_timestamp_min_utc: str
-    available_target_timestamp_max_utc: str
-    complete_day_min_utc: str | None
-    complete_day_max_utc: str | None
-    notice: str
+    source: str = Field(description="EirGrid observation archive, separate from either prediction model.")
+    available_target_timestamp_min_utc: str = Field(description="Earliest stored half-hour target for V1 actual-value lookups.")
+    available_target_timestamp_max_utc: str = Field(description="Latest stored half-hour target for V1 actual-value lookups.")
+    complete_day_min_utc: str | None = Field(description="Earliest complete UTC day for V2 actual-value lookups.")
+    complete_day_max_utc: str | None = Field(description="Latest complete UTC day for V2 actual-value lookups.")
+    notice: str = Field(description="Archive refresh limitations; this endpoint does not describe model-training coverage.")
 
 
 class PointActualBatchRequest(BaseModel):
     target_timestamps_utc: list[datetime] = Field(
         min_length=1,
         max_length=200,
-        description="Copy target_timestamp_utc from up to 200 v1 prediction results, in any order.",
+        description="Copy target_timestamp_utc from 1–200 V1 prediction results, in any order. Each value needs an ISO 8601 timezone and UTC half-hour alignment.",
+        examples=[["2026-01-15T12:30:00Z", "2026-01-15T13:00:00Z"]],
     )
 
     @field_validator("target_timestamps_utc")
@@ -254,7 +314,11 @@ def create_app(
     configured_api_key = (
         api_key if api_key is not None else os.getenv("GRIDTOEV_API_KEY", "")
     ).strip()
-    api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+    api_key_header = APIKeyHeader(
+        name="X-API-Key",
+        auto_error=False,
+        description="Shared team key for protected V1, V2 and actual-value routes. Use the Authorize button once in Swagger UI.",
+    )
 
     def require_api_key(
         provided_api_key: str | None = Security(api_key_header),
@@ -288,11 +352,10 @@ def create_app(
         yield
 
     app = FastAPI(
-        title="GridToEV Prediction API",
+        title="GridToEV V1 + V2 Prediction API",
         version="1.1.0",
-        description=(
-            "Forecast Irish renewable dispatch-down risk and energy 30 or 60 minutes ahead."
-        ),
+        description=API_DESCRIPTION,
+        openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )
 
@@ -325,7 +388,11 @@ def create_app(
             "api_key_required": bool(configured_api_key),
         }
 
-    @app.get("/health")
+    @app.get(
+        "/health", response_model=HealthResponse, tags=[TAG_SERVICE],
+        summary="Check V1 readiness and whether optional V2 loaded",
+        description="No input or API key. `status=ready` means V1 is serving; `daily_model_available` independently tells you whether experimental daily V2 loaded.",
+    )
     def health() -> dict[str, Any]:
         return {
             "status": "ready",
@@ -334,7 +401,11 @@ def create_app(
             "daily_model_available": app.state.daily_curtailment_service is not None,
         }
 
-    @app.get("/model-info", dependencies=[Depends(require_api_key)])
+    @app.get(
+        "/model-info", dependencies=[Depends(require_api_key)], tags=[TAG_V1],
+        summary="V1 model version, required live features and historical dataset range",
+        description="No query or body input. Returns metadata for the 30/60-minute dispatch-down model, including its full `required_live_features` list for `/predict/features`. For exact replay dates use `/dataset/info`.",
+    )
     def model_info() -> dict[str, Any]:
         return prediction_service.model_info()
 
@@ -342,7 +413,9 @@ def create_app(
         "/actuals/coverage",
         response_model=ActualsCoverageResponse,
         dependencies=[Depends(require_api_key)],
-        summary="Show the observation archive's actual-value coverage",
+        tags=[TAG_ACTUALS],
+        summary="Actuals archive coverage for V1 half-hours and V2 complete days",
+        description="No input. This EirGrid observation snapshot is separate from both modelling datasets. Half-hour bounds guide V1 actual lookups; complete-day bounds guide V2 actual lookups. Later actuals are pending until the archive is refreshed.",
     )
     def actuals_coverage() -> dict[str, Any]:
         try:
@@ -355,12 +428,17 @@ def create_app(
         "/actuals/v1",
         response_model=PointActualResponse,
         dependencies=[Depends(require_api_key)],
-        summary="Retrieve an observed v1 half-hour target, or its availability status",
+        tags=[TAG_ACTUALS],
+        summary="V1 actual: observed dispatch-down for one target half-hour",
+        description="Input: `target_timestamp_utc` from a **V1 prediction response**, not `issue_timestamp_utc`. Use timezone-aware ISO 8601 on a UTC half-hour boundary. `available` returns observed dispatch-down, curtailment and constraint MWh; `pending`/`missing` return null actuals, never a guessed zero.",
     )
     def point_actual(
         target_timestamp_utc: Annotated[
             datetime,
-            Query(description="Copy target_timestamp_utc from a v1 prediction; ISO 8601 timezone required."),
+            Query(
+                description="V1 target timestamp copied from a prediction; ISO 8601 timezone required, aligned to a UTC half-hour.",
+                examples=["2026-01-15T12:30:00Z"],
+            ),
         ],
     ) -> dict[str, Any]:
         try:
@@ -375,7 +453,9 @@ def create_app(
         "/actuals/v1/batch",
         response_model=PointActualBatchResponse,
         dependencies=[Depends(require_api_key)],
-        summary="Retrieve actuals for an array of v1 prediction targets",
+        tags=[TAG_ACTUALS],
+        summary="V1 actuals: look up 1–200 prediction target half-hours",
+        description="Input: `target_timestamps_utc` array copied from V1 prediction results, in ISO 8601 UTC format. Returns observed actuals in request order. `pending` and `missing` are not interpreted as zero.",
     )
     def point_actual_batch(request: PointActualBatchRequest) -> dict[str, Any]:
         try:
@@ -391,12 +471,14 @@ def create_app(
         "/actuals/daily-curtailment",
         response_model=DailyActualResponse,
         dependencies=[Depends(require_api_key)],
-        summary="Retrieve observed daily curtailment, or its availability status",
+        tags=[TAG_ACTUALS],
+        summary="V2 actual: observed curtailment for one complete UTC day",
+        description="Input: `target_date_utc` copied from a **V2 daily prediction**, formatted `YYYY-MM-DD`. An actual is `available` only after all 48 EirGrid half-hour labels for that UTC day are valid. Otherwise `pending` or `missing` returns null actuals.",
     )
     def daily_actual(
         target_date_utc: Annotated[
             date,
-            Query(description="Copy target_date_utc from a daily-v2 prediction; YYYY-MM-DD."),
+            Query(description="V2 target UTC date copied from a daily prediction; YYYY-MM-DD.", examples=["2026-08-30"]),
         ],
     ) -> dict[str, Any]:
         try:
@@ -407,14 +489,39 @@ def create_app(
             logger.warning("Actuals archive unavailable: %s", type(error).__name__)
             raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
 
-    @app.get("/model-info/daily-curtailment", dependencies=[Depends(require_api_key)])
+    @app.get(
+        "/model-info/daily-curtailment", dependencies=[Depends(require_api_key)], tags=[TAG_V2],
+        summary="V2 model version, weather features and historical test metrics",
+        description="No input. Returns experimental daily-curtailment model metadata and its **daily** test MAE; do not compare this MAE numerically with V1 half-hour dispatch-down MAE. Returns 503 when V2 is not loaded.",
+    )
     def daily_model_info() -> dict[str, Any]:
         available_service = app.state.daily_curtailment_service
         if available_service is None:
             raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
         return available_service.bundle["metadata"]
 
-    @app.post("/predict/curtailment/day", response_model=DailyCurtailmentResponse, dependencies=[Depends(require_api_key)])
+    @app.get(
+        "/dataset/daily-curtailment/coverage",
+        response_model=DailyDatasetCoverageResponse,
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_V2],
+        summary="V2 daily dataset dates, split counts and requestable date range",
+        description="No input. Shows the fixed historical train/validation/test coverage used to build and evaluate V2, plus the separate range of UTC dates accepted by the prediction endpoint. Later requestable dates are **not** additional trained rows; an Open-Meteo forecast can still be missing. For observed-outcome coverage use `/actuals/coverage`. Returns 503 when V2 is not loaded.",
+    )
+    def daily_dataset_coverage() -> dict[str, Any]:
+        available_service = app.state.daily_curtailment_service
+        if available_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
+        return available_service.dataset_coverage()
+
+    @app.post(
+        "/predict/curtailment/day",
+        response_model=DailyCurtailmentResponse,
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_V2],
+        summary="V2: predict curtailment probability and total MWh for one UTC day",
+        description='Body: `{"target_date_utc":"YYYY-MM-DD"}` for 2024-04-01 through **today UTC**; no weather fields or forecast horizon are supplied. V2 builds archived day-ahead weather features and predicts an event probability plus total curtailment MWh for the whole day, **not hourly points**. A future day or incomplete forecast yields 422; unavailable forecast service or V2 model yields 503. Copy `target_date_utc` to `/actuals/daily-curtailment` when checking the outcome.',
+    )
     def predict_daily_curtailment(request: DailyCurtailmentRequest) -> dict[str, Any]:
         available_service = app.state.daily_curtailment_service
         if available_service is None:
@@ -430,7 +537,9 @@ def create_app(
         "/dataset/info",
         response_model=DatasetInfoResponse,
         dependencies=[Depends(require_api_key)],
-        summary="Explain the valid dataset dates and timestamp format",
+        tags=[TAG_V1],
+        summary="V1 historical dataset coverage and valid UTC issue-time format",
+        description="No input. Returns the loaded **V1** half-hour issue-time range, count, timestamp format, supported 30/60-minute horizons and 48-hour replay limit. These are historical rows, not current live forecasts. For daily V2 coverage use `/dataset/daily-curtailment/coverage`.",
     )
     def dataset_info() -> dict[str, Any]:
         return prediction_service.dataset_info()
@@ -439,10 +548,12 @@ def create_app(
         "/dataset/available-times",
         response_model=AvailableTimesResponse,
         dependencies=[Depends(require_api_key)],
-        summary="List valid issue timestamps and dataset date guidance",
+        tags=[TAG_V1],
+        summary="V1: list valid historical issue timestamps",
+        description="Optional `limit` query (1–1000, default 96) selects how many of the latest **V1 dataset** issue times to return. Copy one to `issue_timestamp_utc` for `/predict/from-dataset`, or use it as a window start. This list is historical, not a live clock.",
     )
     def available_times(
-        limit: Annotated[int, Query(ge=1, le=1000)] = 96,
+        limit: Annotated[int, Query(ge=1, le=1000, description="Number of latest V1 historical half-hour issue timestamps to list (1–1000).", examples=[48])] = 96,
     ) -> dict[str, Any]:
         return {
             **prediction_service.dataset_info(),
@@ -453,6 +564,9 @@ def create_app(
         "/predict/from-dataset",
         response_model=PredictionResponse,
         dependencies=[Depends(require_api_key)],
+        tags=[TAG_V1],
+        summary="V1: predict one historical 30- or 60-minute target",
+        description="Body: a V1 `issue_timestamp_utc` from `/dataset/info` or `/dataset/available-times`, `forecast_horizon_minutes` of 30 or 60, and optional `flexible_load_capacity_mw`. Returns dispatch-down risk and MWh for the target half-hour. A date alone, an unavailable time or a time outside the loaded historical dataset cannot be used; a missing row returns 404.",
     )
     def predict_from_dataset(request: DatasetPredictionRequest) -> dict[str, Any]:
         try:
@@ -470,11 +584,13 @@ def create_app(
         "/predict/window/from-dataset",
         response_model=DatasetWindowPredictionResponse,
         dependencies=[Depends(require_api_key)],
-        summary="Return an array of rolling historical short-horizon predictions",
+        tags=[TAG_V1],
+        summary="V1: replay 30/60-minute predictions across a historical window",
         description=(
-            "Starting at a valid dataset timestamp, calculate 30- and/or 60-minute "
-            "predictions every half-hour for up to 48 hours. This is a historical rolling "
-            "replay, not a single multi-hour or day-ahead forecast."
+            "Body: a valid historical `start_timestamp_utc`, `duration_hours` from 0.5 to 48 "
+            "in 0.5-hour steps, optional 30/60-minute horizons and capacity. Returns an ordered "
+            "array of V1 predictions at successive dataset half-hours, with a summary per horizon. "
+            "It is **not a day-ahead** or single 2-hour forecast; every array item is still 30 or 60 minutes ahead of its own issue time."
         ),
     )
     def predict_window_from_dataset(
@@ -496,6 +612,9 @@ def create_app(
         "/predict/features",
         response_model=PredictionResponse,
         dependencies=[Depends(require_api_key)],
+        tags=[TAG_V1],
+        summary="V1: predict from a complete externally supplied feature snapshot",
+        description="Advanced V1 endpoint. Body needs a timezone-aware `issue_timestamp_utc`, a 30/60-minute horizon and a `features` object containing **every** numeric key in `/model-info` → `feature_contract.required_live_features`. Unlike dataset replay, this route does not fetch or fill missing features. Invalid or incomplete snapshots return 422; only use values known at the issue time.",
     )
     def predict_features(request: FeaturePredictionRequest) -> dict[str, Any]:
         try:
@@ -512,9 +631,12 @@ def create_app(
         "/predict/latest",
         response_model=LatestPredictionsResponse,
         dependencies=[Depends(require_api_key)],
+        tags=[TAG_V1],
+        summary="V1: predict both horizons for the latest historical dataset row",
+        description="Optional `flexible_load_capacity_mw` query (default 100). Returns two V1 predictions, 30 and 60 minutes ahead of the **latest loaded historical issue time**. This is **not a current-time/live forecast**; check `/dataset/info` for its actual timestamp.",
     )
     def predict_latest(
-        flexible_load_capacity_mw: Annotated[float, Query(gt=0, le=10000)] = 100.0,
+        flexible_load_capacity_mw: Annotated[float, Query(gt=0, le=10000, description="Optional EV/flexible-load capacity in MW for V1 surplus calculations.")] = 100.0,
     ) -> dict[str, Any]:
         try:
             predictions = prediction_service.predict_latest(flexible_load_capacity_mw)

@@ -33,9 +33,14 @@ If the optional bundle or report fails validation, v1 still starts and serves no
 
 The new endpoints are:
 
+- `GET /dataset/daily-curtailment/coverage` — historical train/validation/test date ranges and complete-day counts, fitted-through date, and the separate currently requestable UTC-date range. This does **not** claim every later date has a complete archived weather forecast.
 - `GET /model-info/daily-curtailment` — version, features, data hash and test MAE.
 - `POST /predict/curtailment/day` with `{"target_date_utc":"YYYY-MM-DD"}` — probability of at least some curtailment and predicted total MWh for that UTC day.
 - `GET /actuals/daily-curtailment?target_date_utc=YYYY-MM-DD` — the observed complete-day curtailment after it appears in the EirGrid archive; see `docs/ACTUALS_API.md`.
+
+`GET /actuals/coverage` describes a **different** EirGrid actual-value snapshot. The V2 coverage
+endpoint describes complete historical model-ready days (2024-04-01 through 2026-08-30, 882 days),
+not when later observed outcomes become available.
 
 For example:
 

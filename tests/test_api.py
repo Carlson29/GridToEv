@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import warnings
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -17,6 +18,7 @@ with warnings.catch_warnings():
 
 from gridtoev.api import create_app
 from gridtoev.actuals import ActualsService
+from gridtoev.daily_model import DailyCurtailmentService
 from gridtoev.inference import FeatureValidationError, PredictionService
 from gridtoev.training import TrainingConfig, train_and_save
 from tests.test_training_and_inference import make_synthetic_dataset
@@ -72,6 +74,50 @@ class ApiTests(unittest.TestCase):
             info["available_issue_timestamp_min_utc"],
             info["available_issue_timestamp_max_utc"],
         )
+
+    def test_openapi_explains_model_routes_and_inputs(self) -> None:
+        schema = self.client.get("/openapi.json").json()
+        self.assertIn("30/60-minute", schema["info"]["description"])
+        self.assertIn("daily curtailment", schema["info"]["description"].lower())
+        expected_tags = {
+            "/health": "Service",
+            "/model-info": "V1 — 30/60-minute model",
+            "/dataset/info": "V1 — 30/60-minute model",
+            "/dataset/available-times": "V1 — 30/60-minute model",
+            "/predict/latest": "V1 — 30/60-minute model",
+            "/predict/from-dataset": "V1 — 30/60-minute model",
+            "/predict/window/from-dataset": "V1 — 30/60-minute model",
+            "/predict/features": "V1 — 30/60-minute model",
+            "/model-info/daily-curtailment": "V2 — daily curtailment model",
+            "/dataset/daily-curtailment/coverage": "V2 — daily curtailment model",
+            "/predict/curtailment/day": "V2 — daily curtailment model",
+            "/actuals/coverage": "Observed outcomes",
+            "/actuals/v1": "Observed outcomes",
+            "/actuals/v1/batch": "Observed outcomes",
+            "/actuals/daily-curtailment": "Observed outcomes",
+        }
+        self.assertEqual(set(schema["paths"]), set(expected_tags))
+        for path, expected_tag in expected_tags.items():
+            operation = next(iter(schema["paths"][path].values()))
+            self.assertEqual(operation["tags"], [expected_tag], path)
+            self.assertTrue(operation["summary"], path)
+            self.assertTrue(operation["description"], path)
+        self.assertIn("historical", schema["paths"]["/predict/latest"]["get"]["description"].lower())
+        self.assertIn("not a day-ahead", schema["paths"]["/predict/window/from-dataset"]["post"]["description"].lower())
+        self.assertIn("YYYY-MM-DD", schema["components"]["schemas"]["DailyCurtailmentRequest"]["properties"]["target_date_utc"]["description"])
+
+    def test_daily_dataset_coverage_requires_key_and_shows_historical_and_request_ranges(self) -> None:
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, api_key="team-secret", daily_service=DailyCurtailmentService())) as client:
+            self.assertEqual(client.get("/dataset/daily-curtailment/coverage").status_code, 401)
+            response = client.get(
+                "/dataset/daily-curtailment/coverage", headers={"X-API-Key": "team-secret"}
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            result = response.json()
+            self.assertEqual(result["historical_complete_day_count"], 882)
+            self.assertEqual(result["partitions"]["train"]["complete_day_count"], 275)
+            self.assertEqual(result["requestable_date_max_utc"], datetime.now(timezone.utc).date().isoformat())
 
     def test_predict_from_dataset(self) -> None:
         timestamp = self.data["issue_timestamp_utc"].iloc[-30].isoformat()
@@ -315,6 +361,7 @@ class ApiTests(unittest.TestCase):
             "/predict/curtailment/day", json={"target_date_utc": "2026-09-26"}
         )
         self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.client.get("/dataset/daily-curtailment/coverage").status_code, 503)
         self.assertEqual(self.client.get("/health").status_code, 200)
 
     def test_broken_optional_daily_model_cannot_take_v1_offline(self) -> None:

@@ -8,7 +8,7 @@ The prediction responses already contain the lookup key. Copy `target_timestamp_
 | v1 historical window array | `POST /actuals/v1/batch` with `{"target_timestamps_utc":["2026-01-15T12:30:00Z", "2026-01-15T13:00:00Z"]}` | same fields, array in request order (maximum 200) |
 | Optional daily-v2 prediction | `GET /actuals/daily-curtailment?target_date_utc=2026-01-15` | complete UTC-day curtailment MWh and event |
 
-`GET /actuals/coverage` gives the archive's earliest/latest half-hour and complete-day dates. All four routes are read-only and use the same optional API-key protection as the prediction routes. Timestamps must be timezone-aware ISO 8601 and align to a UTC half-hour. The daily date is `YYYY-MM-DD` in UTC, not Irish local time.
+`GET /actuals/coverage` gives the archive's earliest/latest half-hour and complete-day dates. This is **observation coverage**, not the V1 or V2 model-ready dataset coverage. For model-input coverage use `GET /dataset/info` (V1) or `GET /dataset/daily-curtailment/coverage` (V2). All four actuals routes are read-only and use the same optional API-key protection as the prediction routes. Timestamps must be timezone-aware ISO 8601 and align to a UTC half-hour. The daily date is `YYYY-MM-DD` in UTC, not Irish local time.
 
 Every lookup returns `status`:
 
@@ -30,4 +30,4 @@ Invoke-RestMethod -Uri "$base/actuals/v1?target_timestamp_utc=$target" -Headers 
 
 The bundled archive is a **snapshot**, currently ending at 2026-08-31 22:30 UTC, with complete daily labels through 2026-08-30. Later predictions will initially return `pending`. EirGrid actuals are published after the fact; to make a later outcome available, refresh `data/processed/eirgrid_core_history_30min.csv.gz` with the project's EirGrid history pipeline and redeploy the image. The service loads the archive lazily on first actuals lookup and does not auto-download or synthesize newer labels. `GRIDTOEV_ACTUALS_PATH` can select a different, verified archive; the Docker image includes the committed one.
 
-These routes are proposed in the feature-branch PR only. They do not change v1's model artifact, release authorization, prediction schema, or existing endpoints.
+These routes are live alongside both prediction models. They do not change V1's model artifact or either model's prediction schema.

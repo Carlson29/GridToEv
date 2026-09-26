@@ -1,7 +1,8 @@
 # GridToEV dispatch-down forecasting
 
 This repository prepares energy data, trains the GridToEV forecasting models, and serves predictions
-through FastAPI. It forecasts renewable dispatch-down in Ireland 30 or 60 minutes ahead.
+through FastAPI. V1 forecasts renewable dispatch-down in Ireland 30 or 60 minutes ahead. Experimental
+V2 separately forecasts curtailment probability and total MWh for a full UTC day.
 
 The notebooks are:
 
@@ -11,11 +12,11 @@ The notebooks are:
 - `notebooks/05_build_semo_market_signals.ipynb`
 - `notebooks/06_daily_curtailment_v2.ipynb` (optional daily curtailment model)
 
-It writes one combined modelling table:
+The V1 notebook writes one combined modelling table:
 
 - `data/processed/gridtoev_model_ready.csv`
 
-The current build contains 2,867 rows and 133 columns from 2 January through 31 January 2026. Each
+The V1 table contains 2,867 rows and 133 columns from 2 January through 31 January 2026. Each
 issue time appears once for the 30-minute horizon and once for the 60-minute horizon. The CSV has no
 missing cells and no duplicate issue-time/horizon keys.
 
@@ -150,15 +151,18 @@ python -m unittest discover -s tests -v
 
 ## Prediction API
 
-- `GET /`: service discovery and links.
-- `GET /health`: readiness and model version.
-- `GET /model-info`: training metadata and available dataset time range.
-- `GET /dataset/info`: exact date range, required UTC format, interval, and forecast semantics.
-- `GET /dataset/available-times`: valid timestamps plus the same date guidance for a frontend selector.
-- `GET /predict/latest`: both forecast horizons for the latest available issue time.
-- `POST /predict/from-dataset`: one selected historical time and horizon.
-- `POST /predict/window/from-dataset`: ordered 0.5-48 hour historical rolling prediction array.
-- `POST /predict/features`: a complete live feature snapshot.
+Open `/docs` for the grouped, interactive API guide. Use the shared `X-API-Key` with **Authorize**
+when one is configured. The routes have different model targets and input formats:
+
+| Model or purpose | Coverage and metadata | Prediction input | Actual outcome |
+| --- | --- | --- | --- |
+| V1: 30/60-minute dispatch-down | `GET /dataset/info`, `GET /dataset/available-times`, `GET /model-info` | `POST /predict/from-dataset` takes an available historical UTC issue timestamp and 30/60-minute horizon; `POST /predict/window/from-dataset` replays half-hour issue times for up to 48 hours; `POST /predict/features` needs every live feature. `GET /predict/latest` uses the **latest historical dataset row, not now**. | `GET /actuals/v1` or `POST /actuals/v1/batch` using each prediction's `target_timestamp_utc`. |
+| Experimental V2: full-day curtailment | `GET /dataset/daily-curtailment/coverage`, `GET /model-info/daily-curtailment` | `POST /predict/curtailment/day` takes `{"target_date_utc":"YYYY-MM-DD"}` for a UTC day from 2024-04-01 through today UTC; it fetches its own forecast inputs. | `GET /actuals/daily-curtailment` using `target_date_utc`. |
+| Service and actuals snapshot | `GET /health` reports V1 readiness and `daily_model_available`; `GET /actuals/coverage` reports observed half-hour and complete-day coverage. | — | Missing or not-yet-published actuals return `missing`/`pending`, not zero. |
+
+V2's historical model-ready dataset ends at 2026-08-30, but the prediction endpoint can request
+later dates if the forecast source has all required inputs. Actuals have a separate, periodically
+refreshed EirGrid archive. See `docs/DAILY_CURTAILMENT_V2.md` and `docs/ACTUALS_API.md`.
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
 Set `GRIDTOEV_API_KEY` on shared deployments; protected routes then require the `X-API-Key` header.

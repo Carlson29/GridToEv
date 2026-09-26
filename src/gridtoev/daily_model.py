@@ -250,6 +250,41 @@ class DailyCurtailmentService:
             raise ValueError("Daily model training dataset hash does not match its evaluation report")
         self.bundle = bundle
 
+    def dataset_coverage(self) -> dict:
+        """Describe the frozen evaluation days separately from requestable forecast dates."""
+        if self.bundle is None:
+            self.load()
+        assert self.bundle is not None
+        report = json.loads(self.report_path.read_text(encoding="utf-8"))
+        partitions = {
+            split: {
+                "first_target_date_utc": date.fromisoformat(report["date_ranges"][split][0][:10]).isoformat(),
+                "last_target_date_utc": date.fromisoformat(report["date_ranges"][split][1][:10]).isoformat(),
+                "complete_day_count": int(report["rows"][split]),
+            }
+            for split in ("train", "validation", "test")
+        }
+        return {
+            "model_version": self.bundle["metadata"]["model_version"],
+            "historical_date_min_utc": min(part["first_target_date_utc"] for part in partitions.values()),
+            "historical_date_max_utc": max(part["last_target_date_utc"] for part in partitions.values()),
+            "historical_complete_day_count": sum(part["complete_day_count"] for part in partitions.values()),
+            "partitions": partitions,
+            "fitted_through_date_utc": self.bundle["metadata"]["trained_through_utc"][:10],
+            "requestable_date_min_utc": EARLIEST_TARGET_DATE.isoformat(),
+            "requestable_date_max_utc": datetime.now(timezone.utc).date().isoformat(),
+            "date_format": "YYYY-MM-DD",
+            "timezone": "UTC",
+            "dataset_sha256": report["dataset_sha256"],
+            "forecast_source": report["source"],
+            "request_notice": (
+                "The historical dataset is a fixed development/evaluation snapshot, not the live request limit. "
+                "A date through today UTC can be requested, but a prediction is not guaranteed if the "
+                "Open-Meteo forecast archive lacks all required hourly inputs. "
+                "Observed daily outcomes have separate coverage at /actuals/coverage."
+            ),
+        }
+
     def predict_features(self, features: pd.DataFrame) -> dict:
         if self.bundle is None:
             self.load()

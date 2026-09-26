@@ -2,11 +2,10 @@
 
 ## What colleagues receive
 
-The `release/shareable-prediction-api` branch is the stable serving branch. It contains the frozen
-v1.1.0 model bundle, the small demonstration dataset, FastAPI, Docker packaging, and request examples.
-The API loads the bundle once at startup; a prediction request does not run a notebook and does not
-retrain the model. Model experiments can therefore continue on a different branch without changing
-the predictions used by colleagues.
+The `release/shareable-prediction-api` branch is the serving branch. It contains the frozen V1.1.0
+30/60-minute dispatch-down model, its historical demonstration dataset, and an independently loaded,
+experimental V2 daily-curtailment model. Prediction requests do not run notebooks or retrain either
+model. V2 is enabled by the live Render Blueprint; a local Docker Compose deployment remains opt-in.
 
 The easiest interface is the interactive page at `BASE_URL/docs`. The machine-readable endpoints
 return JSON and can be called from a frontend, Python, PowerShell, curl, or another backend.
@@ -28,7 +27,8 @@ This is the recommended hackathon setup because only one person operates the ser
 5. Set `GRIDTOEV_CORS_ORIGINS` to the exact frontend origins, separated by commas, for example
    `https://gridtoev.example.com,http://localhost:5173`. If colleagues only use `/docs`, Python,
    PowerShell, or curl, this value does not affect them.
-6. Deploy, wait until `/health` returns `{"status":"ready",...}`, then share only these two values
+6. Deploy, wait until `/health` returns `{"status":"ready",...}`, then check
+   `daily_model_available` if the daily V2 option is expected. Share only these two values
    through a private team channel:
 
    - the Render URL, such as `https://gridtoev-api.onrender.com`;
@@ -36,6 +36,8 @@ This is the recommended hackathon setup because only one person operates the ser
 
 Do not commit the key. A free service may sleep when idle, so its first request can be slower. Render
 uses `/health` to reject a deployment that cannot load the model.
+V1 readiness is independent of V2: `/health` can still say `ready` when
+`daily_model_available` is false.
 
 ## Option B: run it on one teammate's computer
 
@@ -108,6 +110,26 @@ for each horizon so totals are not accidentally double-counted.
 This is a rolling historical replay: every item is still a 30- or 60-minute forecast using the feature
 row available at that item's issue time. It is useful for charts, demonstrations, and backtesting, but
 it is not a single forecast made 2, 24, or 48 hours ahead.
+
+## Use experimental daily V2
+
+This is **not** another V1 horizon. V2 predicts whether any curtailment will occur and the total
+curtailment MWh over one UTC day. Call `GET /dataset/daily-curtailment/coverage` to see historical
+train/validation/test coverage and the separate requestable-date range. Call
+`GET /model-info/daily-curtailment` to see its version and daily test metrics.
+
+Send this body to `POST /predict/curtailment/day` with the same `X-API-Key`:
+
+```json
+{"target_date_utc":"2026-08-30"}
+```
+
+Use `YYYY-MM-DD` from 2024-04-01 through the current UTC date. V2 obtains its own archived weather
+forecast fields, so no horizon or feature object is needed. A date may be within the allowed range
+yet fail if the forecast source lacks a complete day. To check the observed outcome later, copy the
+returned `target_date_utc` to `GET /actuals/daily-curtailment`; `GET /actuals/coverage` shows which
+complete UTC days have observed labels. V2 is experimental and should not be used as a dispatch
+instruction.
 
 ## Make a prediction from PowerShell
 
