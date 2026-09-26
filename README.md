@@ -58,6 +58,9 @@ It keeps the original dataset, dates, and rollback model intact while excluding 
 training labels at every boundary. See `docs/PURGED_BENCHMARK.md` for the measured impact and
 why older candidate results must be rerun against v2 before promotion.
 
+The separate multi-year point-forecast experiment and its no-promotion decision are in
+`docs/MULTI_YEAR_CAUSAL_MODEL.md`.
+
 Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
 
 ```powershell
