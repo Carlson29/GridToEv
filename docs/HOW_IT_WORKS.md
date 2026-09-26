@@ -2,6 +2,9 @@
 
 ## The short version
 
+This page explains the V1 30/60-minute dispatch-down pipeline. Experimental V2 is a separate
+full-UTC-day curtailment model; see `docs/DAILY_CURTAILMENT_V2.md` and the model-labelled `/docs` API page.
+
 The first notebook prepares a clean table. The second notebook teaches several models from that table
 and saves them as one model bundle. FastAPI loads that bundle when the server starts. The frontend
 sends a time, forecast horizon, and flexible-load capacity; the API returns the likelihood and likely

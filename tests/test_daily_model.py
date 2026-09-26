@@ -3,6 +3,7 @@ import unittest
 import hashlib
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -65,6 +66,21 @@ class DailyModelTests(unittest.TestCase):
                 stream.write(b"tampered")
             with self.assertRaisesRegex(ValueError, "checksum"):
                 DailyCurtailmentService(altered).load()
+
+    def test_dataset_coverage_separates_evaluation_dates_from_request_dates(self):
+        report = json.loads(DEFAULT_REPORT.read_text(encoding="utf-8"))
+        service = DailyCurtailmentService(DEFAULT_ARTIFACT, DEFAULT_REPORT)
+        service.load()
+
+        coverage = service.dataset_coverage()
+
+        self.assertEqual(coverage["model_version"], report["model_version"])
+        self.assertEqual(coverage["historical_complete_day_count"], sum(report["rows"].values()))
+        self.assertEqual(coverage["historical_date_min_utc"], "2024-04-01")
+        self.assertEqual(coverage["historical_date_max_utc"], "2026-08-30")
+        self.assertEqual(coverage["partitions"]["test"]["complete_day_count"], report["rows"]["test"])
+        self.assertEqual(coverage["requestable_date_max_utc"], datetime.now(timezone.utc).date().isoformat())
+        self.assertIn("not guaranteed", coverage["request_notice"].lower())
 
 
 if __name__ == "__main__":
