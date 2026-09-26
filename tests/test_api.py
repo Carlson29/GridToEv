@@ -48,6 +48,7 @@ class ApiTests(unittest.TestCase):
         health = self.client.get("/health")
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["status"], "ready")
+        self.assertFalse(health.json()["daily_model_available"])
 
         root = self.client.get("/")
         self.assertEqual(root.status_code, 200)
@@ -324,6 +325,7 @@ class ApiTests(unittest.TestCase):
         service = PredictionService(self.artifact_path, self.dataset_path)
         with TestClient(create_app(service, daily_service=BrokenDailyService())) as client:
             self.assertEqual(client.get("/health").status_code, 200)
+            self.assertFalse(client.get("/health").json()["daily_model_available"])
             self.assertEqual(client.get("/predict/latest").status_code, 200)
             self.assertEqual(client.post("/predict/curtailment/day", json={"target_date_utc": "2026-01-15"}).status_code, 503)
 
@@ -347,6 +349,7 @@ class ApiTests(unittest.TestCase):
                 }
 
         with TestClient(create_app(self.client.app.state.prediction_service, daily_service=FakeDailyService())) as client:
+            self.assertTrue(client.get("/health").json()["daily_model_available"])
             response = client.post(
                 "/predict/curtailment/day", json={"target_date_utc": "2026-09-26"}
             )

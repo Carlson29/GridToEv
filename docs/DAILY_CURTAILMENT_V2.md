@@ -27,7 +27,7 @@ The first command caches public source JSON in git-ignored `data/raw/open_meteo_
 
 Set `GRIDTOEV_DAILY_MODEL_PATH=models/v2/daily_curtailment_bundle.joblib` in the API environment and start FastAPI as usual. The loader verifies its SHA-256 against `benchmarks/daily_curtailment_v2/evaluation.json` **before** deserializing it; `GRIDTOEV_DAILY_REPORT_PATH` can select that trusted report if it lives elsewhere. Without the model setting, all v1 endpoints continue to work and the daily endpoint returns 503.
 
-The Docker image and Render Blueprint do not set `GRIDTOEV_DAILY_MODEL_PATH`, so merging this code into a live branch does not launch v2 unless a deployment operator has set it separately. Docker Compose passes the setting through only when explicitly supplied by the operator. To opt in later, set `GRIDTOEV_DAILY_MODEL_PATH=/app/models/v2/daily_curtailment_bundle.joblib` in the deployment environment and redeploy; remove or clear that variable to switch v2 off again. The v1 artifact and routes do not change.
+The Docker image leaves `GRIDTOEV_DAILY_MODEL_PATH` unset, while the live Render Blueprint sets it to `/app/models/v2/daily_curtailment_bundle.joblib`. Docker Compose still passes the setting through only when explicitly supplied by the operator. `GET /health` reports `daily_model_available` so operators can confirm that the optional model loaded without changing v1 readiness. To turn v2 off on Render, remove or clear the variable in the Blueprint and sync/redeploy; the v1 artifact and routes do not change.
 
 If the optional bundle or report fails validation, v1 still starts and serves normally; only the v2 routes return 503.
 
@@ -44,7 +44,7 @@ $body = @{ target_date_utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
 Invoke-RestMethod -Uri http://localhost:8000/predict/curtailment/day -Method Post -ContentType application/json -Body $body
 ```
 
-The target date must be between **2024-04-01 and the current UTC date**: earlier fixed-GFS archive coverage is incomplete, while tomorrow's full set of 24-hour-lead forecast values is not yet available at today's issue time. Live requests fetch four archived forecast snapshots from Open-Meteo; if the provider is unavailable, the API returns 503 rather than substituting today's observed weather. Requests need network access, and deployment must comply with the data provider's applicable usage terms. This branch does **not** deploy or enable the model on the live Render service.
+The target date must be between **2024-04-01 and the current UTC date**: earlier fixed-GFS archive coverage is incomplete, while tomorrow's full set of 24-hour-lead forecast values is not yet available at today's issue time. Live requests fetch four archived forecast snapshots from Open-Meteo; if the provider is unavailable, the API returns 503 rather than substituting today's observed weather. Requests need network access, and deployment must comply with the data provider's applicable usage terms. The Render Blueprint enables this experimental option on the live service; its forecasts should not be treated as dispatch instructions.
 
 ## Interpretation and release cautions
 
