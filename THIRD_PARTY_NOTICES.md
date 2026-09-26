@@ -21,7 +21,12 @@ Package licence files distributed with the installed packages remain authoritati
 - Hack the Climate / ENTSO-E sample generation, load, and price files
 - EirGrid System Data Qtr Hourly 2026
 - EirGrid DD Half-Hourly 2026
+- SEMO static reports for wind/load forecasts, RTIC schedules, physical notifications, forecast
+  imbalance, net imbalance volume forecasts, interconnector NTC, imbalance outcomes, and SSII/SIFF
 
-Source URLs and file hashes are recorded in `data/processed/source_manifest.csv`. Data-provider terms
-and event-specific rules remain authoritative; do not assume that public download access grants a
-right to redistribute unchanged raw files.
+Source URLs and file hashes are recorded in `data/processed/source_manifest.csv`,
+`data/processed/extended_source_manifest.csv`, and
+`data/processed/semo_market_source_manifest.csv`. Data-provider terms and event-specific rules remain
+authoritative; do not assume that public download access grants a right to redistribute unchanged raw
+files. SEMO raw XML reports are downloaded from `https://reports.sem-o.com/` and are not redistributed
+in this repository.

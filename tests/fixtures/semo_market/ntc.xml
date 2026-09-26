@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<OutboundData DatasetName="PUB_DailyIntconNTC" PublishTime="2026-09-23T06:00:00">
+  <PUB_DailyIntconNTC ROW="1" ResourceName="I_NIMOYLE" StartTime="2026-09-23T22:00:00" EndTime="2026-09-23T23:00:00" MaximumImportMW="500" MaximumExportMW="500" />
+</OutboundData>

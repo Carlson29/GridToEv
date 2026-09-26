@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import math
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -12,6 +14,11 @@ from .constants import (
     DEFAULT_MODEL_PATH,
     INTERVAL_HOURS,
     SUPPORTED_FORECAST_HORIZONS,
+)
+from .release_guard import (
+    ReleaseAuthorizationError,
+    feature_contract_sha256,
+    verify_model_authorization,
 )
 
 
@@ -32,9 +39,11 @@ class PredictionService:
         self,
         model_path: Path | str = DEFAULT_MODEL_PATH,
         dataset_path: Path | str | None = DEFAULT_DATASET_PATH,
+        release_report_path: Path | str | None = None,
     ) -> None:
         self.model_path = Path(model_path).resolve()
         self.dataset_path = Path(dataset_path).resolve() if dataset_path else None
+        self.release_report_path = Path(release_report_path).resolve() if release_report_path else None
         self.bundle: dict[str, Any] | None = None
         self.dataset: pd.DataFrame | None = None
 
@@ -53,10 +62,32 @@ class PredictionService:
             raise FileNotFoundError(
                 f"Model bundle not found at {self.model_path}. Run `gridtoev-train` first."
             )
+        if self.release_report_path is not None:
+            verify_model_authorization(self.model_path, self.release_report_path)
         bundle = joblib.load(self.model_path)
         required_keys = {"metadata", "metrics", "feature_columns", "models"}
         if not required_keys.issubset(bundle):
             raise ValueError("Model bundle is missing required keys")
+        if bundle["metadata"].get("feature_columns") != bundle["feature_columns"]:
+            raise ValueError("Model bundle feature order disagrees with metadata")
+        if tuple(bundle["metadata"].get("forecast_horizons_minutes", [])) != SUPPORTED_FORECAST_HORIZONS:
+            raise ValueError("Model bundle forecast horizons are incompatible with this API")
+        if self.release_report_path is not None:
+            release = json.loads(self.release_report_path.read_text(encoding="utf-8"))
+            expected_contract = (
+                release.get("candidate", {}).get("feature_contract_sha256")
+                if release.get("decision", {}).get("candidate_approved")
+                else release.get("feature_contract", {}).get("sha256")
+            )
+            if feature_contract_sha256(bundle["feature_columns"]) != expected_contract:
+                raise ReleaseAuthorizationError("Loaded model feature contract does not match release report")
+            expected_version = (
+                release.get("candidate", {}).get("model_version")
+                if release.get("decision", {}).get("candidate_approved")
+                else release.get("active_model_version")
+            )
+            if bundle["metadata"].get("model_version") != expected_version:
+                raise ReleaseAuthorizationError("Loaded model version does not match release report")
         self.bundle = bundle
 
         if self.dataset_path is not None:
@@ -76,6 +107,19 @@ class PredictionService:
     def model_info(self) -> dict[str, Any]:
         info = dict(self.metadata)
         info.pop("feature_columns", None)
+        columns = list(self._ensure_loaded()["feature_columns"])
+        info["feature_contract"] = {
+            "feature_count": len(columns),
+            "sha256": feature_contract_sha256(columns),
+            "required_live_features": [column for column in columns if column != "forecast_horizon_minutes"],
+        }
+        if self.release_report_path is not None:
+            release = json.loads(self.release_report_path.read_text(encoding="utf-8"))
+            info["release_status"] = {
+                "candidate_approved": bool(release["decision"]["candidate_approved"]),
+                "active_model_version": release["active_model_version"],
+                "reason": release["decision"]["reason"],
+            }
         # Do not expose an absolute server filesystem path through a public API.
         info["model_artifact"] = self.model_path.name
         info["dataset_loaded"] = self.dataset is not None
@@ -451,6 +495,17 @@ class PredictionService:
             raise FeatureValidationError(
                 f"Missing {len(missing)} required features. First missing fields: {missing[:10]}"
             )
+        unexpected = sorted(set(features) - required)
+        if unexpected:
+            raise FeatureValidationError(
+                f"Unexpected {len(unexpected)} features outside the model contract. "
+                f"First unexpected fields: {unexpected[:10]}"
+            )
+        nonfinite = sorted(
+            column for column in required if not math.isfinite(float(features[column]))
+        )
+        if nonfinite:
+            raise FeatureValidationError(f"Non-finite feature values are not allowed: {nonfinite[:10]}")
 
         row = {column: float(features[column]) for column in required}
         row["forecast_horizon_minutes"] = forecast_horizon_minutes
