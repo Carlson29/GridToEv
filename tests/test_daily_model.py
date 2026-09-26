@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -55,6 +56,15 @@ class DailyModelTests(unittest.TestCase):
         self.assertGreaterEqual(result["curtailment_event_probability"], 0)
         self.assertLessEqual(result["curtailment_event_probability"], 1)
         self.assertGreaterEqual(result["predicted_curtailment_mwh"], 0)
+
+    def test_daily_service_rejects_tampered_model_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            altered = Path(directory) / "daily.joblib"
+            shutil.copyfile(DEFAULT_ARTIFACT, altered)
+            with altered.open("ab") as stream:
+                stream.write(b"tampered")
+            with self.assertRaisesRegex(ValueError, "checksum"):
+                DailyCurtailmentService(altered).load()
 
 
 if __name__ == "__main__":

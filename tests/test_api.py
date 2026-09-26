@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 import warnings
+import math
 from pathlib import Path
 
 
@@ -15,7 +16,8 @@ with warnings.catch_warnings():
     from fastapi.testclient import TestClient
 
 from gridtoev.api import create_app
-from gridtoev.inference import PredictionService
+from gridtoev.actuals import ActualsService
+from gridtoev.inference import FeatureValidationError, PredictionService
 from gridtoev.training import TrainingConfig, train_and_save
 from tests.test_training_and_inference import make_synthetic_dataset
 
@@ -47,9 +49,28 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["status"], "ready")
 
+        root = self.client.get("/")
+        self.assertEqual(root.status_code, 200)
+        self.assertEqual(root.json()["docs_url"], "/docs")
+
         model_info = self.client.get("/model-info")
         self.assertEqual(model_info.status_code, 200)
         self.assertEqual(model_info.json()["forecast_horizons_minutes"], [30, 60])
+        self.assertEqual(model_info.json()["model_artifact"], "model.joblib")
+        self.assertNotIn("model_path", model_info.json())
+
+        dataset_info = self.client.get("/dataset/info")
+        self.assertEqual(dataset_info.status_code, 200, dataset_info.text)
+        info = dataset_info.json()
+        self.assertEqual(info["timezone"], "UTC")
+        self.assertEqual(info["interval_minutes"], 30)
+        self.assertEqual(info["supported_forecast_horizons_minutes"], [30, 60])
+        self.assertIn("T", info["timestamp_example"])
+        self.assertTrue(info["timestamp_example"].endswith("Z"))
+        self.assertLess(
+            info["available_issue_timestamp_min_utc"],
+            info["available_issue_timestamp_max_utc"],
+        )
 
     def test_predict_from_dataset(self) -> None:
         timestamp = self.data["issue_timestamp_utc"].iloc[-30].isoformat()
@@ -91,6 +112,32 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertIn("prediction_interval_p90_mwh", response.json())
 
+    def test_feature_snapshot_rejects_extra_and_nonfinite_fields(self) -> None:
+        row = self.data.iloc[-30]
+        features = {
+            column: float(row[column])
+            for column in self.training_result.bundle["feature_columns"]
+            if column != "forecast_horizon_minutes"
+        }
+        request = {
+            "issue_timestamp_utc": row["issue_timestamp_utc"].isoformat(),
+            "forecast_horizon_minutes": 30,
+            "features": {**features, "unknown_signal": 1.0},
+        }
+        self.assertEqual(self.client.post("/predict/features", json=request).status_code, 422)
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        service.load()
+        with self.assertRaisesRegex(FeatureValidationError, "Non-finite"):
+            service.predict_features(
+                {**features, "dispatch_down_mwh_lag_1": math.inf}, 30
+            )
+
+    def test_model_info_exposes_feature_contract_not_server_path(self) -> None:
+        response = self.client.get("/model-info")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["feature_contract"]["feature_count"], len(self.training_result.bundle["feature_columns"]))
+        self.assertNotIn("model_path", response.json())
+
     def test_unknown_dataset_timestamp_returns_not_found(self) -> None:
         response = self.client.post(
             "/predict/from-dataset",
@@ -101,6 +148,166 @@ class ApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 404)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["error"], "dataset_timestamp_not_available")
+        self.assertIn("expected_format", detail)
+        self.assertIn("available_issue_timestamp_min_utc", detail)
+        self.assertIn("nearest_before_utc", detail)
+
+    def test_dataset_timestamp_requires_timezone(self) -> None:
+        response = self.client.post(
+            "/predict/from-dataset",
+            json={
+                "issue_timestamp_utc": "2026-01-01T10:30:00",
+                "forecast_horizon_minutes": 30,
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("timezone", response.text.lower())
+
+    def test_openapi_documents_date_guidance_and_window_endpoint(self) -> None:
+        schema = self.client.get("/openapi.json").json()
+        self.assertIn("/dataset/info", schema["paths"])
+        self.assertIn("/predict/window/from-dataset", schema["paths"])
+        request_schema = schema["components"]["schemas"]["DatasetPredictionRequest"]
+        timestamp_schema = request_schema["properties"]["issue_timestamp_utc"]
+        self.assertEqual(timestamp_schema["format"], "date-time")
+        self.assertIn("/dataset/info", timestamp_schema["description"])
+        self.assertEqual(timestamp_schema["examples"], ["2026-01-15T12:30:00Z"])
+
+    def test_two_hour_window_returns_ordered_array_and_horizon_summaries(self) -> None:
+        issue_times = self.data["issue_timestamp_utc"].drop_duplicates().sort_values()
+        issue_times = issue_times.reset_index(drop=True)
+        start = issue_times.iloc[20]
+        response = self.client.post(
+            "/predict/window/from-dataset",
+            json={
+                "start_timestamp_utc": start.isoformat(),
+                "duration_hours": 2,
+                "forecast_horizons_minutes": [30, 60],
+                "flexible_load_capacity_mw": 100,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["semantics"], "historical_rolling_short_horizon")
+        self.assertEqual(body["prediction_count"], 8)
+        self.assertEqual(len(body["predictions"]), 8)
+        self.assertEqual(set(body["summary_by_horizon"]), {"30", "60"})
+        self.assertEqual(body["summary_by_horizon"]["30"]["interval_count"], 4)
+        order = [
+            (item["issue_timestamp_utc"], item["forecast_horizon_minutes"])
+            for item in body["predictions"]
+        ]
+        self.assertEqual(order, sorted(order))
+
+    def test_two_day_window_and_out_of_range_guidance(self) -> None:
+        issue_times = self.data["issue_timestamp_utc"].drop_duplicates().sort_values()
+        issue_times = issue_times.reset_index(drop=True)
+        valid = self.client.post(
+            "/predict/window/from-dataset",
+            json={
+                "start_timestamp_utc": issue_times.iloc[5].isoformat(),
+                "duration_hours": 48,
+                "forecast_horizons_minutes": [30],
+            },
+        )
+        self.assertEqual(valid.status_code, 200, valid.text)
+        self.assertEqual(valid.json()["prediction_count"], 96)
+        self.assertEqual(valid.json()["duration_hours"], 48)
+
+        invalid = self.client.post(
+            "/predict/window/from-dataset",
+            json={
+                "start_timestamp_utc": issue_times.iloc[-2].isoformat(),
+                "duration_hours": 2,
+                "forecast_horizons_minutes": [30, 60],
+            },
+        )
+        self.assertEqual(invalid.status_code, 404)
+        detail = invalid.json()["detail"]
+        self.assertEqual(detail["error"], "dataset_window_not_available")
+        self.assertIn("latest_valid_start_utc_for_duration", detail)
+
+    def test_optional_api_key_protects_data_and_prediction_routes(self) -> None:
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, api_key="team-secret")) as secured_client:
+            self.assertEqual(secured_client.get("/health").status_code, 200)
+            self.assertEqual(secured_client.get("/").status_code, 200)
+
+            missing = secured_client.get("/predict/latest")
+            self.assertEqual(missing.status_code, 401)
+            self.assertEqual(missing.headers["www-authenticate"], "ApiKey")
+
+            wrong = secured_client.get(
+                "/predict/latest",
+                headers={"X-API-Key": "wrong-secret"},
+            )
+            self.assertEqual(wrong.status_code, 401)
+
+            accepted = secured_client.get(
+                "/predict/latest",
+                headers={"X-API-Key": "team-secret"},
+            )
+            self.assertEqual(accepted.status_code, 200, accepted.text)
+
+            model_info = secured_client.get(
+                "/model-info",
+                headers={"X-API-Key": "team-secret"},
+            )
+            self.assertEqual(model_info.status_code, 200, model_info.text)
+
+    def test_existing_positional_api_key_argument_stays_protected(self) -> None:
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, "team-secret")) as client:
+            self.assertEqual(client.get("/predict/latest").status_code, 401)
+            self.assertEqual(client.get("/predict/latest", headers={"X-API-Key": "team-secret"}).status_code, 200)
+
+    def test_actual_lookup_routes_are_keyed_to_targets_and_protected(self) -> None:
+        class FakeActuals:
+            def coverage(self):
+                return {"source": "test", "available_target_timestamp_min_utc": "2026-01-01T00:00:00+00:00",
+                        "available_target_timestamp_max_utc": "2026-01-01T23:30:00+00:00",
+                        "complete_day_min_utc": "2026-01-01", "complete_day_max_utc": "2026-01-01",
+                        "notice": "snapshot"}
+
+            def point(self, target):
+                return {"status": "available", "target_timestamp_utc": target.isoformat(),
+                        "source_latest_timestamp_utc": "2026-01-01T23:30:00+00:00",
+                        "actual_dispatch_down_mwh": 3.0, "actual_curtailment_mwh": 2.0,
+                        "actual_constraint_mwh": 1.0, "actual_dispatch_down_event": True}
+
+            def points(self, targets):
+                return [self.point(target) for target in targets]
+
+            def day(self, target):
+                return {"status": "available", "target_date_utc": target.isoformat(),
+                        "source_latest_timestamp_utc": "2026-01-01T23:30:00+00:00",
+                        "actual_curtailment_mwh": 96.0, "actual_curtailment_event": True,
+                        "complete_half_hour_count": 48}
+
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, api_key="team-secret", actuals_service=FakeActuals())) as client:
+            self.assertEqual(client.get("/actuals/v1", params={"target_timestamp_utc": "2026-01-01T00:30:00Z"}).status_code, 401)
+            headers = {"X-API-Key": "team-secret"}
+            actual = client.get("/actuals/v1", params={"target_timestamp_utc": "2026-01-01T00:30:00Z"}, headers=headers)
+            self.assertEqual(actual.status_code, 200, actual.text)
+            self.assertEqual(actual.json()["actual_dispatch_down_mwh"], 3.0)
+            self.assertEqual(client.get("/actuals/daily-curtailment", params={"target_date_utc": "2026-01-01"}, headers=headers).json()["actual_curtailment_mwh"], 96.0)
+            batch = client.post("/actuals/v1/batch", json={"target_timestamps_utc": ["2026-01-01T00:30:00Z", "2026-01-01T01:00:00Z"]}, headers=headers)
+            self.assertEqual(batch.status_code, 200, batch.text)
+            self.assertEqual(batch.json()["count"], 2)
+            self.assertEqual(client.get("/actuals/coverage", headers=headers).status_code, 200)
+            self.assertEqual(client.get("/actuals/v1", params={"target_timestamp_utc": "2026-01-01T00:30:00"}, headers=headers).status_code, 422)
+
+    def test_missing_actuals_archive_does_not_affect_v1(self) -> None:
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        missing = self.dataset_path.parent / "no_actuals_here.csv.gz"
+        with TestClient(create_app(service, actuals_service=ActualsService(missing))) as client:
+            self.assertEqual(client.get("/health").status_code, 200)
+            response = client.get("/actuals/coverage")
+            self.assertEqual(response.status_code, 503)
+            self.assertNotIn(str(missing), response.text)
 
     def test_optional_daily_model_does_not_change_v1_when_unconfigured(self) -> None:
         response = self.client.post(
@@ -108,6 +315,17 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.client.get("/health").status_code, 200)
+
+    def test_broken_optional_daily_model_cannot_take_v1_offline(self) -> None:
+        class BrokenDailyService:
+            def load(self):
+                raise ValueError("bad optional artifact")
+
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, daily_service=BrokenDailyService())) as client:
+            self.assertEqual(client.get("/health").status_code, 200)
+            self.assertEqual(client.get("/predict/latest").status_code, 200)
+            self.assertEqual(client.post("/predict/curtailment/day", json={"target_date_utc": "2026-01-15"}).status_code, 503)
 
     def test_daily_endpoint_has_a_separate_prediction_contract(self) -> None:
         class FakeDailyService:
@@ -128,7 +346,7 @@ class ApiTests(unittest.TestCase):
                     "target": "Total EirGrid curtailment during this UTC day",
                 }
 
-        with TestClient(create_app(self.client.app.state.prediction_service, FakeDailyService())) as client:
+        with TestClient(create_app(self.client.app.state.prediction_service, daily_service=FakeDailyService())) as client:
             response = client.post(
                 "/predict/curtailment/day", json={"target_date_utc": "2026-09-26"}
             )

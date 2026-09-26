@@ -68,6 +68,8 @@ An independent, opt-in **daily curtailment** model is documented in
 current UTC day at 00:00 UTC using archived day-ahead weather forecasts. It is not
 a replacement for the 30/60-minute v1 dispatch-down model; its API is disabled
 unless `GRIDTOEV_DAILY_MODEL_PATH` is set.
+Both models' observed outcomes can be queried through the read-only endpoints in
+`docs/ACTUALS_API.md` once a verified EirGrid actual is present in the archive.
 
 Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
 
@@ -99,6 +101,17 @@ uvicorn gridtoev.api:app --app-dir src --host 0.0.0.0 --port 8000
 
 Open `http://localhost:8000/docs` for interactive API documentation. A frontend example is available
 in `examples/frontend-prediction.js`.
+
+For a stable team service, Docker/LAN setup, cloud deployment, API-key configuration, and complete
+PowerShell/Python prediction examples, see
+[`docs/SHARING_AND_PREDICTIONS.md`](docs/SHARING_AND_PREDICTIONS.md).
+
+Run the packaged service locally with Docker:
+
+```powershell
+$env:GRIDTOEV_API_KEY = "choose-a-long-team-key"
+docker compose up --build
+```
 
 To run the output checks:
 
@@ -137,15 +150,20 @@ python -m unittest discover -s tests -v
 
 ## Prediction API
 
+- `GET /`: service discovery and links.
 - `GET /health`: readiness and model version.
 - `GET /model-info`: training metadata and available dataset time range.
-- `GET /dataset/available-times`: timestamps for a frontend selector.
+- `GET /dataset/info`: exact date range, required UTC format, interval, and forecast semantics.
+- `GET /dataset/available-times`: valid timestamps plus the same date guidance for a frontend selector.
 - `GET /predict/latest`: both forecast horizons for the latest available issue time.
 - `POST /predict/from-dataset`: one selected historical time and horizon.
+- `POST /predict/window/from-dataset`: ordered 0.5-48 hour historical rolling prediction array.
 - `POST /predict/features`: a complete live feature snapshot.
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
+Set `GRIDTOEV_API_KEY` on shared deployments; protected routes then require the `X-API-Key` header.
 See `docs/FORECAST_FEATURE_ENGINEERING.md` for the Issue #4 feature formulas and leakage controls.
+See `docs/SERVING_RELEASE_GATES.md` for v2 artifact authorization and live-feature checks.
 
 ## 48-hour performance sprint
 

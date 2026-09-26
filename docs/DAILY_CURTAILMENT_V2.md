@@ -25,10 +25,13 @@ The first command caches public source JSON in git-ignored `data/raw/open_meteo_
 
 ## Opt-in API
 
-Set `GRIDTOEV_DAILY_MODEL_PATH=models/v2/daily_curtailment_bundle.joblib` in the API environment and start FastAPI as usual. Without this setting, all v1 endpoints continue to work and the daily endpoint returns 503. The new endpoints are:
+Set `GRIDTOEV_DAILY_MODEL_PATH=models/v2/daily_curtailment_bundle.joblib` in the API environment and start FastAPI as usual. The loader verifies its SHA-256 against `benchmarks/daily_curtailment_v2/evaluation.json` **before** deserializing it; `GRIDTOEV_DAILY_REPORT_PATH` can select that trusted report if it lives elsewhere. Without the model setting, all v1 endpoints continue to work and the daily endpoint returns 503. The new endpoints are:
+
+If the optional bundle or report fails validation, v1 still starts and serves normally; only the v2 routes return 503.
 
 - `GET /model-info/daily-curtailment` — version, features, data hash and test MAE.
 - `POST /predict/curtailment/day` with `{"target_date_utc":"YYYY-MM-DD"}` — probability of at least some curtailment and predicted total MWh for that UTC day.
+- `GET /actuals/daily-curtailment?target_date_utc=YYYY-MM-DD` — the observed complete-day curtailment after it appears in the EirGrid archive; see `docs/ACTUALS_API.md`.
 
 For example:
 

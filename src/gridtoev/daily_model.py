@@ -230,14 +230,24 @@ def train_daily_model(
 
 
 class DailyCurtailmentService:
-    def __init__(self, artifact_path: Path = DEFAULT_ARTIFACT) -> None:
+    def __init__(
+        self,
+        artifact_path: Path = DEFAULT_ARTIFACT,
+        report_path: Path = DEFAULT_REPORT,
+    ) -> None:
         self.artifact_path = Path(artifact_path)
+        self.report_path = Path(report_path)
         self.bundle: dict | None = None
 
     def load(self) -> None:
+        report = json.loads(self.report_path.read_text(encoding="utf-8"))
+        if _sha256(self.artifact_path) != report["artifact_sha256"]:
+            raise ValueError("Daily model artifact checksum does not match its evaluation report")
         bundle = joblib.load(self.artifact_path)
         if bundle["metadata"]["task"] != "UTC-day curtailment event and energy, issued at 00:00 UTC":
             raise ValueError("Not a compatible daily curtailment bundle")
+        if bundle["metadata"]["dataset_sha256"] != report["dataset_sha256"]:
+            raise ValueError("Daily model training dataset hash does not match its evaluation report")
         self.bundle = bundle
 
     def predict_features(self, features: pd.DataFrame) -> dict:

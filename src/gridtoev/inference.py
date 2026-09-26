@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import math
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -13,10 +15,23 @@ from .constants import (
     INTERVAL_HOURS,
     SUPPORTED_FORECAST_HORIZONS,
 )
+from .release_guard import (
+    ReleaseAuthorizationError,
+    feature_contract_sha256,
+    verify_model_authorization,
+)
 
 
 class FeatureValidationError(ValueError):
     """Raised when a live feature snapshot does not match the training contract."""
+
+
+class DatasetSelectionError(LookupError):
+    """Raised with structured guidance when a requested dataset interval is unavailable."""
+
+    def __init__(self, detail: dict[str, Any]) -> None:
+        super().__init__(detail["message"])
+        self.detail = detail
 
 
 class PredictionService:
@@ -24,9 +39,11 @@ class PredictionService:
         self,
         model_path: Path | str = DEFAULT_MODEL_PATH,
         dataset_path: Path | str | None = DEFAULT_DATASET_PATH,
+        release_report_path: Path | str | None = None,
     ) -> None:
         self.model_path = Path(model_path).resolve()
         self.dataset_path = Path(dataset_path).resolve() if dataset_path else None
+        self.release_report_path = Path(release_report_path).resolve() if release_report_path else None
         self.bundle: dict[str, Any] | None = None
         self.dataset: pd.DataFrame | None = None
 
@@ -45,10 +62,32 @@ class PredictionService:
             raise FileNotFoundError(
                 f"Model bundle not found at {self.model_path}. Run `gridtoev-train` first."
             )
+        if self.release_report_path is not None:
+            verify_model_authorization(self.model_path, self.release_report_path)
         bundle = joblib.load(self.model_path)
         required_keys = {"metadata", "metrics", "feature_columns", "models"}
         if not required_keys.issubset(bundle):
             raise ValueError("Model bundle is missing required keys")
+        if bundle["metadata"].get("feature_columns") != bundle["feature_columns"]:
+            raise ValueError("Model bundle feature order disagrees with metadata")
+        if tuple(bundle["metadata"].get("forecast_horizons_minutes", [])) != SUPPORTED_FORECAST_HORIZONS:
+            raise ValueError("Model bundle forecast horizons are incompatible with this API")
+        if self.release_report_path is not None:
+            release = json.loads(self.release_report_path.read_text(encoding="utf-8"))
+            expected_contract = (
+                release.get("candidate", {}).get("feature_contract_sha256")
+                if release.get("decision", {}).get("candidate_approved")
+                else release.get("feature_contract", {}).get("sha256")
+            )
+            if feature_contract_sha256(bundle["feature_columns"]) != expected_contract:
+                raise ReleaseAuthorizationError("Loaded model feature contract does not match release report")
+            expected_version = (
+                release.get("candidate", {}).get("model_version")
+                if release.get("decision", {}).get("candidate_approved")
+                else release.get("active_model_version")
+            )
+            if bundle["metadata"].get("model_version") != expected_version:
+                raise ReleaseAuthorizationError("Loaded model version does not match release report")
         self.bundle = bundle
 
         if self.dataset_path is not None:
@@ -68,7 +107,21 @@ class PredictionService:
     def model_info(self) -> dict[str, Any]:
         info = dict(self.metadata)
         info.pop("feature_columns", None)
-        info["model_path"] = self.model_path.as_posix()
+        columns = list(self._ensure_loaded()["feature_columns"])
+        info["feature_contract"] = {
+            "feature_count": len(columns),
+            "sha256": feature_contract_sha256(columns),
+            "required_live_features": [column for column in columns if column != "forecast_horizon_minutes"],
+        }
+        if self.release_report_path is not None:
+            release = json.loads(self.release_report_path.read_text(encoding="utf-8"))
+            info["release_status"] = {
+                "candidate_approved": bool(release["decision"]["candidate_approved"]),
+                "active_model_version": release["active_model_version"],
+                "reason": release["decision"]["reason"],
+            }
+        # Do not expose an absolute server filesystem path through a public API.
+        info["model_artifact"] = self.model_path.name
         info["dataset_loaded"] = self.dataset is not None
         info["available_issue_timestamp_min_utc"] = None
         info["available_issue_timestamp_max_utc"] = None
@@ -86,6 +139,71 @@ class PredictionService:
             return []
         times = self.dataset["issue_timestamp_utc"].drop_duplicates().sort_values()
         return [timestamp.isoformat() for timestamp in times.tail(limit)]
+
+    def dataset_info(self) -> dict[str, Any]:
+        if self.dataset is None:
+            raise RuntimeError("No modelling dataset is loaded")
+        times = self.dataset["issue_timestamp_utc"].drop_duplicates().sort_values()
+        first = times.iloc[0]
+        last = times.iloc[-1]
+        return {
+            "available_issue_timestamp_min_utc": first.isoformat(),
+            "available_issue_timestamp_max_utc": last.isoformat(),
+            "available_issue_timestamp_count": int(len(times)),
+            "available_date_min_utc": first.date().isoformat(),
+            "available_date_max_utc": last.date().isoformat(),
+            "timezone": "UTC",
+            "timestamp_format": "ISO 8601 with timezone: YYYY-MM-DDTHH:MM:SSZ",
+            "timestamp_example": first.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "interval_minutes": 30,
+            "required_minute_values": [0, 30],
+            "supported_forecast_horizons_minutes": list(SUPPORTED_FORECAST_HORIZONS),
+            "maximum_window_hours": 48.0,
+            "window_semantics": "historical_rolling_short_horizon",
+            "window_notice": (
+                "A window replays 30/60-minute forecasts at each historical half-hour. "
+                "It is not a single 2-hour or day-ahead model forecast."
+            ),
+        }
+
+    def _selection_detail(
+        self,
+        timestamp: pd.Timestamp,
+        forecast_horizon_minutes: int,
+    ) -> dict[str, Any]:
+        if self.dataset is None:
+            raise RuntimeError("No modelling dataset is loaded")
+        horizon_times = self.dataset.loc[
+            self.dataset["forecast_horizon_minutes"].eq(forecast_horizon_minutes),
+            "issue_timestamp_utc",
+        ].drop_duplicates().sort_values()
+        before = horizon_times.loc[horizon_times.lt(timestamp)]
+        after = horizon_times.loc[horizon_times.gt(timestamp)]
+        info = self.dataset_info()
+        return {
+            "error": "dataset_timestamp_not_available",
+            "message": (
+                f"No dataset row exists for {timestamp.isoformat()} at "
+                f"the {forecast_horizon_minutes}-minute horizon."
+            ),
+            "requested_issue_timestamp_utc": timestamp.isoformat(),
+            "requested_forecast_horizon_minutes": int(forecast_horizon_minutes),
+            "expected_format": info["timestamp_format"],
+            "timestamp_example": info["timestamp_example"],
+            "available_issue_timestamp_min_utc": info[
+                "available_issue_timestamp_min_utc"
+            ],
+            "available_issue_timestamp_max_utc": info[
+                "available_issue_timestamp_max_utc"
+            ],
+            "nearest_before_utc": (
+                before.iloc[-1].isoformat() if not before.empty else None
+            ),
+            "nearest_after_utc": (
+                after.iloc[0].isoformat() if not after.empty else None
+            ),
+            "available_times_endpoint": "/dataset/available-times",
+        }
 
     def _ensure_loaded(self) -> dict[str, Any]:
         if self.bundle is None:
@@ -209,8 +327,8 @@ class PredictionService:
             & self.dataset["forecast_horizon_minutes"].eq(forecast_horizon_minutes)
         ]
         if matches.empty:
-            raise KeyError(
-                f"No dataset row for {timestamp.isoformat()} at {forecast_horizon_minutes} minutes"
+            raise DatasetSelectionError(
+                self._selection_detail(timestamp, forecast_horizon_minutes)
             )
         return self._predict_frame(
             matches.iloc[[0]],
@@ -239,6 +357,126 @@ class PredictionService:
             for horizon in SUPPORTED_FORECAST_HORIZONS
         ]
 
+    def predict_window_from_dataset(
+        self,
+        start_timestamp_utc: str | pd.Timestamp,
+        duration_hours: float,
+        forecast_horizons_minutes: list[int],
+        flexible_load_capacity_mw: float = 100.0,
+    ) -> dict[str, Any]:
+        """Replay short-horizon predictions over a historical half-hour window."""
+        if self.dataset is None:
+            raise RuntimeError("No modelling dataset is loaded")
+        if duration_hours < 0.5 or duration_hours > 48:
+            raise FeatureValidationError("duration_hours must be between 0.5 and 48")
+        steps_float = duration_hours * 2
+        if not np.isclose(steps_float, round(steps_float)):
+            raise FeatureValidationError("duration_hours must be in 0.5-hour increments")
+        horizons = sorted(set(int(value) for value in forecast_horizons_minutes))
+        invalid_horizon = any(
+            value not in SUPPORTED_FORECAST_HORIZONS for value in horizons
+        )
+        if not horizons or invalid_horizon:
+            raise FeatureValidationError(
+                f"forecast_horizons_minutes must contain values from {SUPPORTED_FORECAST_HORIZONS}"
+            )
+        if flexible_load_capacity_mw <= 0:
+            raise FeatureValidationError("flexible_load_capacity_mw must be positive")
+
+        start = pd.Timestamp(start_timestamp_utc)
+        if start.tzinfo is None:
+            start = start.tz_localize("UTC")
+        else:
+            start = start.tz_convert("UTC")
+        steps = int(round(steps_float))
+        expected_times = pd.date_range(start=start, periods=steps, freq="30min")
+
+        common_times: set[pd.Timestamp] | None = None
+        for horizon in horizons:
+            horizon_times = set(
+                self.dataset.loc[
+                    self.dataset["forecast_horizon_minutes"].eq(horizon),
+                    "issue_timestamp_utc",
+                ]
+            )
+            common_times = (
+                horizon_times if common_times is None else common_times & horizon_times
+            )
+        common_times = common_times or set()
+        missing_times = [timestamp for timestamp in expected_times if timestamp not in common_times]
+        if missing_times:
+            info = self.dataset_info()
+            latest_valid_start = None
+            if common_times:
+                candidate = max(common_times) - pd.Timedelta(minutes=30 * (steps - 1))
+                if candidate >= min(common_times):
+                    latest_valid_start = candidate.isoformat()
+            raise DatasetSelectionError(
+                {
+                    "error": "dataset_window_not_available",
+                    "message": (
+                        "The requested window is not fully contained in the dataset for every "
+                        "requested horizon."
+                    ),
+                    "requested_start_timestamp_utc": start.isoformat(),
+                    "requested_duration_hours": float(duration_hours),
+                    "requested_forecast_horizons_minutes": horizons,
+                    "first_missing_issue_timestamp_utc": missing_times[0].isoformat(),
+                    "latest_valid_start_utc_for_duration": latest_valid_start,
+                    "expected_format": info["timestamp_format"],
+                    "available_issue_timestamp_min_utc": info[
+                        "available_issue_timestamp_min_utc"
+                    ],
+                    "available_issue_timestamp_max_utc": info[
+                        "available_issue_timestamp_max_utc"
+                    ],
+                }
+            )
+
+        predictions = [
+            self.predict_from_dataset(timestamp, horizon, flexible_load_capacity_mw)
+            for timestamp in expected_times
+            for horizon in horizons
+        ]
+        summary_by_horizon: dict[str, dict[str, Any]] = {}
+        for horizon in horizons:
+            items = [
+                item
+                for item in predictions
+                if item["forecast_horizon_minutes"] == horizon
+            ]
+            summary_by_horizon[str(horizon)] = {
+                "interval_count": len(items),
+                "average_dispatch_down_probability": float(
+                    np.mean([item["dispatch_down_probability"] for item in items])
+                ),
+                "total_predicted_dispatch_down_mwh": float(
+                    sum(item["predicted_dispatch_down_mwh"] for item in items)
+                ),
+                "peak_predicted_dispatch_down_mwh": float(
+                    max(item["predicted_dispatch_down_mwh"] for item in items)
+                ),
+                "total_recoverable_surplus_mwh": float(
+                    sum(item["recoverable_surplus_mwh"] for item in items)
+                ),
+            }
+
+        return {
+            "model_version": self.metadata["model_version"],
+            "semantics": "historical_rolling_short_horizon",
+            "notice": self.dataset_info()["window_notice"],
+            "start_timestamp_utc": start.isoformat(),
+            "end_timestamp_exclusive_utc": (
+                start + pd.Timedelta(hours=duration_hours)
+            ).isoformat(),
+            "duration_hours": float(duration_hours),
+            "interval_minutes": 30,
+            "forecast_horizons_minutes": horizons,
+            "prediction_count": len(predictions),
+            "summary_by_horizon": summary_by_horizon,
+            "predictions": predictions,
+        }
+
     def predict_features(
         self,
         features: Mapping[str, float],
@@ -257,6 +495,17 @@ class PredictionService:
             raise FeatureValidationError(
                 f"Missing {len(missing)} required features. First missing fields: {missing[:10]}"
             )
+        unexpected = sorted(set(features) - required)
+        if unexpected:
+            raise FeatureValidationError(
+                f"Unexpected {len(unexpected)} features outside the model contract. "
+                f"First unexpected fields: {unexpected[:10]}"
+            )
+        nonfinite = sorted(
+            column for column in required if not math.isfinite(float(features[column]))
+        )
+        if nonfinite:
+            raise FeatureValidationError(f"Non-finite feature values are not allowed: {nonfinite[:10]}")
 
         row = {column: float(features[column]) for column in required}
         row["forecast_horizon_minutes"] = forecast_horizon_minutes
