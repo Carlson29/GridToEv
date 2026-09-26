@@ -4,7 +4,11 @@ Issue #1 establishes the comparison contract that every later model experiment m
 stop a candidate from appearing better because it used different dates, saw future information, or was
 measured with a different metric.
 
-## Reproduce the frozen baseline
+**Current comparison contract:** `config/benchmark_contract.v2.json` and `v2-purged/`.
+The earlier v1 contract and `v1.1.0/` report remain frozen for reproducibility, but are
+historical rather than suitable for selecting a new candidate. See `docs/PURGED_BENCHMARK.md`.
+
+## Reproduce the historical v1.1.0 baseline
 
 From an installed project environment, run:
 
@@ -20,7 +24,11 @@ The command does not overwrite the production model. It writes:
   rows; and
 - no fitted model artifact, because v1.1.0 remains the rollback bundle under `models/`.
 
-## Frozen evaluation contract
+For the label-mature benchmark used by future comparisons, run
+`python scripts/run_purged_benchmark.py`. It writes `v2-purged/benchmark_report.json`
+and `v2-purged/experiment_registry.csv` without replacing production files.
+
+## Historical v1 evaluation contract
 
 `config/benchmark_contract.v1.json` is the source of truth for:
 

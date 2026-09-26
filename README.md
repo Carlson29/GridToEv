@@ -47,6 +47,16 @@ python scripts/run_benchmark.py
 That command validates dataset order and publication times, selects operating settings without final-
 test access, scores the sealed test only after selection, verifies the committed hashes and metrics,
 and writes the granular report and experiment registry under `benchmarks/v1.1.0/`.
+That historical v1 contract does not purge labels that finish after the next score period
+starts. For new model comparisons, use the corrected v2 contract instead:
+
+```powershell
+python scripts/run_purged_benchmark.py
+```
+
+It keeps the original dataset, dates, and rollback model intact while excluding immature
+training labels at every boundary. See `docs/PURGED_BENCHMARK.md` for the measured impact and
+why older candidate results must be rerun against v2 before promotion.
 
 Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
 

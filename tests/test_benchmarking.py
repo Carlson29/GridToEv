@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -22,6 +23,8 @@ from gridtoev.benchmarking import (
     run_baseline_benchmark,
     validate_benchmark_dataset,
 )
+from gridtoev.benchmarking import _select_operating_policy as benchmark_select_policy
+from gridtoev.benchmarking import _score_models as benchmark_score_models
 from gridtoev.training import (
     TrainingConfig,
     _select_operating_policy,
@@ -147,6 +150,162 @@ class BenchmarkingTests(unittest.TestCase):
                 final_test["issue_timestamp_utc"].min(),
             )
             previous_fit_rows = len(fold.fit)
+
+    def test_purged_contract_excludes_labels_unavailable_at_score_issue(self) -> None:
+        payload = json.loads(self.contract_path.read_text(encoding="utf-8"))
+        payload["schema_version"] = 2
+        payload["contract_id"] = "dispatch-down-benchmark-v2-purged"
+        payload["label_maturity_policy"] = "target_before_score_issue"
+        purged_path = self.temp_path / "purged-contract.json"
+        purged_path.write_text(json.dumps(payload), encoding="utf-8")
+        contract = load_benchmark_contract(purged_path)
+        data = load_dataset(self.dataset_path)
+        train, validation, final_test = chronological_split(
+            data,
+            train_fraction=contract.train_fraction,
+            validation_fraction=contract.validation_fraction,
+        )
+        folds = build_rolling_origin_folds(
+            train,
+            validation,
+            contract,
+            final_test_start_utc=final_test["issue_timestamp_utc"].min(),
+        )
+        self.assertEqual(contract.label_maturity_policy, "target_before_score_issue")
+        for fold in folds:
+            self.assertLess(
+                fold.fit["target_timestamp_utc"].max(),
+                fold.score["issue_timestamp_utc"].min(),
+            )
+            self.assertLess(
+                fold.score["target_timestamp_utc"].max(),
+                fold.score_cutoff_utc,
+            )
+
+    def test_purged_fold_builder_requires_final_boundary(self) -> None:
+        contract = load_benchmark_contract(ROOT / "config" / "benchmark_contract.v2.json")
+        data = load_dataset(self.dataset_path)
+        train, validation, _ = chronological_split(data)
+        with self.assertRaisesRegex(ValueError, "final_test_start_utc"):
+            build_rolling_origin_folds(train, validation, contract)
+
+    def test_v2_contract_cannot_silently_fall_back_to_legacy_policy(self) -> None:
+        payload = json.loads(self.contract_path.read_text(encoding="utf-8"))
+        payload["schema_version"] = 2
+        payload["contract_id"] = "dispatch-down-benchmark-v2-purged"
+        path = self.temp_path / "incomplete-v2-contract.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "label_maturity_policy"):
+            load_benchmark_contract(path)
+
+    def test_purged_selection_reports_boundary_evidence(self) -> None:
+        payload = json.loads(self.contract_path.read_text(encoding="utf-8"))
+        payload["schema_version"] = 2
+        payload["contract_id"] = "dispatch-down-benchmark-v2-purged"
+        payload["label_maturity_policy"] = "target_before_score_issue"
+        purged_path = self.temp_path / "purged-contract.json"
+        purged_path.write_text(json.dumps(payload), encoding="utf-8")
+        result = run_baseline_benchmark(
+            dataset_path=self.dataset_path,
+            contract_path=purged_path,
+            output_dir=self.temp_path / "purged-benchmark",
+            training_config=TrainingConfig(max_iter=5, min_samples_leaf=5, random_state=7),
+            verify_frozen_baseline=False,
+        )
+        evidence = result.report["selection"]["label_maturity"]
+        self.assertGreater(evidence["purged_train_rows"], 0)
+        self.assertLess(
+            pd.Timestamp(evidence["fit_target_max_utc"]),
+            pd.Timestamp(evidence["score_issue_min_utc"]),
+        )
+        self.assertTrue(result.report["rolling_origin"]["label_maturity_verified"])
+        self.assertTrue(result.report["rolling_origin"]["score_label_maturity_verified"])
+        self.assertGreater(evidence["purged_validation_rows"], 0)
+        self.assertLess(
+            pd.Timestamp(evidence["score_target_max_utc"]),
+            pd.Timestamp(evidence["final_issue_min_utc"]),
+        )
+
+    def test_purged_fold_policies_use_only_each_folds_past(self) -> None:
+        with patch(
+            "gridtoev.benchmarking._select_operating_policy",
+            wraps=benchmark_select_policy,
+        ) as selection:
+            result = run_baseline_benchmark(
+                dataset_path=self.dataset_path,
+                contract_path=ROOT / "config" / "benchmark_contract.v2.json",
+                output_dir=self.temp_path / "fold-local-benchmark",
+                training_config=TrainingConfig(max_iter=5, min_samples_leaf=5, random_state=7),
+                verify_frozen_baseline=False,
+            )
+        folds = result.report["rolling_origin"]["folds"]
+        self.assertEqual(selection.call_count, len(folds) + 1)
+        for call, fold in zip(selection.call_args_list[1:], folds):
+            inner_fit, inner_validation = call.args[1:3]
+            score_start = pd.Timestamp(fold["score"]["issue_timestamp_min_utc"])
+            self.assertLess(inner_fit["target_timestamp_utc"].max(), score_start)
+            self.assertLess(inner_validation["target_timestamp_utc"].max(), score_start)
+            self.assertEqual(fold["operating_policy_source"], "fold_fit_only")
+
+    def test_final_labels_cannot_change_purged_policy_selection(self) -> None:
+        contract_path = ROOT / "config" / "benchmark_contract.v2.json"
+        config = TrainingConfig(max_iter=5, min_samples_leaf=5, random_state=7)
+        original = run_baseline_benchmark(
+            dataset_path=self.dataset_path,
+            contract_path=contract_path,
+            output_dir=self.temp_path / "original-selection",
+            training_config=config,
+            verify_frozen_baseline=False,
+        )
+        changed = self.data.copy()
+        cutoff = changed["issue_timestamp_utc"].drop_duplicates().iloc[int(120 * 0.85)]
+        final_rows = changed["issue_timestamp_utc"].ge(cutoff)
+        changed.loc[final_rows, "dispatch_down_mwh"] += 100.0
+        altered_path = self.temp_path / "changed-final-labels.csv"
+        changed.to_csv(altered_path, index=False)
+        altered = run_baseline_benchmark(
+            dataset_path=altered_path,
+            contract_path=contract_path,
+            output_dir=self.temp_path / "altered-selection",
+            training_config=config,
+            verify_frozen_baseline=False,
+        )
+        self.assertEqual(
+            original.report["selection"]["operating_policy"],
+            altered.report["selection"]["operating_policy"],
+        )
+        self.assertEqual(
+            [fold["operating_policy"] for fold in original.report["rolling_origin"]["folds"]],
+            [fold["operating_policy"] for fold in altered.report["rolling_origin"]["folds"]],
+        )
+        self.assertNotEqual(
+            original.report["final_test"]["metrics"]["regression"]["dispatch_down_mwh"]["mae"],
+            altered.report["final_test"]["metrics"]["regression"]["dispatch_down_mwh"]["mae"],
+        )
+
+    def test_final_scoring_happens_after_every_purged_policy_selection(self) -> None:
+        events: list[str] = []
+
+        def select(*args, **kwargs):
+            events.append("select")
+            return benchmark_select_policy(*args, **kwargs)
+
+        def score(*args, **kwargs):
+            events.append("score")
+            return benchmark_score_models(*args, **kwargs)
+
+        with patch("gridtoev.benchmarking._select_operating_policy", side_effect=select):
+            with patch("gridtoev.benchmarking._score_models", side_effect=score):
+                run_baseline_benchmark(
+                    dataset_path=self.dataset_path,
+                    contract_path=ROOT / "config" / "benchmark_contract.v2.json",
+                    output_dir=self.temp_path / "sealed-benchmark",
+                    training_config=TrainingConfig(
+                        max_iter=5, min_samples_leaf=5, random_state=7
+                    ),
+                    verify_frozen_baseline=False,
+                )
+        self.assertEqual(events, ["select"] * 5 + ["score"])
 
     def test_policy_selection_interface_cannot_receive_final_test(self) -> None:
         parameters = inspect.signature(_select_operating_policy).parameters
