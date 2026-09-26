@@ -1,0 +1,93 @@
+{
+  "experiment_id": "optional-horizon-residual-v2",
+  "benchmark_contract": "dispatch-down-benchmark-v2-purged",
+  "dataset_sha256": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
+  "v1_bundle_sha256": "c5ce8f01b25ac4df186aca66cc154be9097b2c5529a8a89e1a9b78302d9d427f",
+  "development_rows": 1622,
+  "development_v1_mae_mwh": 10.09466909679408,
+  "families": [
+    {
+      "name": "all_v1_features",
+      "physical": false,
+      "weights": {
+        "30": 0.1,
+        "60": 0.4
+      },
+      "baseline_mae": 10.09466909679408,
+      "candidate_mae": 9.922442713620873,
+      "by_horizon": {
+        "30": {
+          "v1_mae_mwh": 7.3973853321033225,
+          "v2_mae_mwh": 7.3758735409577
+        },
+        "60": {
+          "v1_mae_mwh": 12.805289245982694,
+          "v2_mae_mwh": 12.481603081204502
+        }
+      },
+      "by_fold": {
+        "train_fold_1": {
+          "v1_mae_mwh": 16.748217317380348,
+          "v2_mae_mwh": 16.541424579362577
+        },
+        "train_fold_2": {
+          "v1_mae_mwh": 2.122407330827069,
+          "v2_mae_mwh": 2.290790045930799
+        },
+        "train_fold_3": {
+          "v1_mae_mwh": 7.70464060150376,
+          "v2_mae_mwh": 7.8993674018031195
+        },
+        "validation_fold": {
+          "v1_mae_mwh": 13.591379098360655,
+          "v2_mae_mwh": 12.790125765433906
+        }
+      }
+    },
+    {
+      "name": "all_v1_features_plus_physical_interactions",
+      "physical": true,
+      "weights": {
+        "30": 0.2,
+        "60": 0.4
+      },
+      "baseline_mae": 10.09466909679408,
+      "candidate_mae": 9.926968076594397,
+      "by_horizon": {
+        "30": {
+          "v1_mae_mwh": 7.3973853321033225,
+          "v2_mae_mwh": 7.371962640067651
+        },
+        "60": {
+          "v1_mae_mwh": 12.805289245982694,
+          "v2_mae_mwh": 12.494606420100258
+        }
+      },
+      "by_fold": {
+        "train_fold_1": {
+          "v1_mae_mwh": 16.748217317380348,
+          "v2_mae_mwh": 16.434111008151408
+        },
+        "train_fold_2": {
+          "v1_mae_mwh": 2.122407330827069,
+          "v2_mae_mwh": 2.3367413603453078
+        },
+        "train_fold_3": {
+          "v1_mae_mwh": 7.70464060150376,
+          "v2_mae_mwh": 7.9899799287106665
+        },
+        "validation_fold": {
+          "v1_mae_mwh": 13.591379098360655,
+          "v2_mae_mwh": 12.77948092661983
+        }
+      }
+    }
+  ],
+  "selected_family": "all_v1_features",
+  "final_test_scored": true,
+  "artifact_created": false,
+  "final_test_rows": 431,
+  "final_test_v1_mae_mwh": 11.825026392111367,
+  "final_test_v2_mae_mwh": 11.930593933633023,
+  "final_test_improvement_fraction": -0.008927467729973281
+}

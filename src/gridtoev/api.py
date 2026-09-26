@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 import secrets
+import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Security, status
@@ -11,12 +12,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, field_validator
 
+from .actuals import ActualsService
 from .constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
+from .daily_curtailment import DEFAULT_HISTORY
+from .daily_model import DEFAULT_REPORT, DailyCurtailmentService
 from .inference import DatasetSelectionError, FeatureValidationError, PredictionService
 from .release_guard import DEFAULT_REPORT_PATH
 
 
 ForecastHorizon = Literal[30, 60]
+logger = logging.getLogger(__name__)
 
 
 def _require_timezone(value: datetime) -> datetime:
@@ -114,6 +119,69 @@ class LatestPredictionsResponse(BaseModel):
     predictions: list[PredictionResponse]
 
 
+class DailyCurtailmentRequest(BaseModel):
+    target_date_utc: date = Field(
+        description="UTC calendar day in YYYY-MM-DD format, from 2024-04-01 through the current UTC day. The forecast is issued at 00:00 UTC on that day."
+    )
+
+
+class DailyCurtailmentResponse(BaseModel):
+    model_version: str
+    experimental: bool
+    target_date_utc: str
+    issue_timestamp_utc: str
+    forecast_max_available_at_utc: str
+    curtailment_event_probability: float
+    predicted_curtailment_mwh: float
+    target: str
+
+
+class PointActualResponse(BaseModel):
+    status: Literal["available", "pending", "missing"]
+    target_timestamp_utc: str
+    source_latest_timestamp_utc: str
+    actual_dispatch_down_mwh: float | None
+    actual_curtailment_mwh: float | None
+    actual_constraint_mwh: float | None
+    actual_dispatch_down_event: bool | None
+
+
+class DailyActualResponse(BaseModel):
+    status: Literal["available", "pending", "missing"]
+    target_date_utc: str
+    source_latest_timestamp_utc: str
+    actual_curtailment_mwh: float | None
+    actual_curtailment_event: bool | None
+    complete_half_hour_count: int
+
+
+class ActualsCoverageResponse(BaseModel):
+    source: str
+    available_target_timestamp_min_utc: str
+    available_target_timestamp_max_utc: str
+    complete_day_min_utc: str | None
+    complete_day_max_utc: str | None
+    notice: str
+
+
+class PointActualBatchRequest(BaseModel):
+    target_timestamps_utc: list[datetime] = Field(
+        min_length=1,
+        max_length=200,
+        description="Copy target_timestamp_utc from up to 200 v1 prediction results, in any order.",
+    )
+
+    @field_validator("target_timestamps_utc")
+    @classmethod
+    def validate_times(cls, values: list[datetime]) -> list[datetime]:
+        return [_require_timezone(value) for value in values]
+
+
+class PointActualBatchResponse(BaseModel):
+    count: int
+    actuals: list[PointActualResponse]
+
+
 class DatasetInfoResponse(BaseModel):
     available_issue_timestamp_min_utc: str
     available_issue_timestamp_max_utc: str
@@ -168,8 +236,21 @@ def _default_service() -> PredictionService:
 def create_app(
     service: PredictionService | None = None,
     api_key: str | None = None,
+    *,
+    daily_service: DailyCurtailmentService | None = None,
+    actuals_service: ActualsService | None = None,
 ) -> FastAPI:
     prediction_service = service or _default_service()
+    daily_model_path = os.getenv("GRIDTOEV_DAILY_MODEL_PATH")
+    optional_daily_service = daily_service or (
+        DailyCurtailmentService(
+            daily_model_path,
+            os.getenv("GRIDTOEV_DAILY_REPORT_PATH", str(DEFAULT_REPORT)),
+        ) if daily_model_path else None
+    )
+    observation_service = actuals_service or ActualsService(
+        os.getenv("GRIDTOEV_ACTUALS_PATH", str(DEFAULT_HISTORY))
+    )
     configured_api_key = (
         api_key if api_key is not None else os.getenv("GRIDTOEV_API_KEY", "")
     ).strip()
@@ -196,6 +277,14 @@ def create_app(
         if not prediction_service.loaded:
             prediction_service.load()
         app.state.prediction_service = prediction_service
+        app.state.daily_curtailment_service = None
+        if optional_daily_service is not None:
+            try:
+                optional_daily_service.load()
+            except Exception as error:
+                logger.warning("Optional daily model unavailable; v1 remains ready: %s", type(error).__name__)
+            else:
+                app.state.daily_curtailment_service = optional_daily_service
         yield
 
     app = FastAPI(
@@ -247,6 +336,94 @@ def create_app(
     @app.get("/model-info", dependencies=[Depends(require_api_key)])
     def model_info() -> dict[str, Any]:
         return prediction_service.model_info()
+
+    @app.get(
+        "/actuals/coverage",
+        response_model=ActualsCoverageResponse,
+        dependencies=[Depends(require_api_key)],
+        summary="Show the observation archive's actual-value coverage",
+    )
+    def actuals_coverage() -> dict[str, Any]:
+        try:
+            return observation_service.coverage()
+        except (OSError, ValueError) as error:
+            logger.warning("Actuals archive unavailable: %s", type(error).__name__)
+            raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
+
+    @app.get(
+        "/actuals/v1",
+        response_model=PointActualResponse,
+        dependencies=[Depends(require_api_key)],
+        summary="Retrieve an observed v1 half-hour target, or its availability status",
+    )
+    def point_actual(
+        target_timestamp_utc: Annotated[
+            datetime,
+            Query(description="Copy target_timestamp_utc from a v1 prediction; ISO 8601 timezone required."),
+        ],
+    ) -> dict[str, Any]:
+        try:
+            return observation_service.point(_require_timezone(target_timestamp_utc))
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except OSError as error:
+            logger.warning("Actuals archive unavailable: %s", type(error).__name__)
+            raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
+
+    @app.post(
+        "/actuals/v1/batch",
+        response_model=PointActualBatchResponse,
+        dependencies=[Depends(require_api_key)],
+        summary="Retrieve actuals for an array of v1 prediction targets",
+    )
+    def point_actual_batch(request: PointActualBatchRequest) -> dict[str, Any]:
+        try:
+            rows = observation_service.points(request.target_timestamps_utc)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except OSError as error:
+            logger.warning("Actuals archive unavailable: %s", type(error).__name__)
+            raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
+        return {"count": len(rows), "actuals": rows}
+
+    @app.get(
+        "/actuals/daily-curtailment",
+        response_model=DailyActualResponse,
+        dependencies=[Depends(require_api_key)],
+        summary="Retrieve observed daily curtailment, or its availability status",
+    )
+    def daily_actual(
+        target_date_utc: Annotated[
+            date,
+            Query(description="Copy target_date_utc from a daily-v2 prediction; YYYY-MM-DD."),
+        ],
+    ) -> dict[str, Any]:
+        try:
+            return observation_service.day(target_date_utc)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except OSError as error:
+            logger.warning("Actuals archive unavailable: %s", type(error).__name__)
+            raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
+
+    @app.get("/model-info/daily-curtailment", dependencies=[Depends(require_api_key)])
+    def daily_model_info() -> dict[str, Any]:
+        available_service = app.state.daily_curtailment_service
+        if available_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
+        return available_service.bundle["metadata"]
+
+    @app.post("/predict/curtailment/day", response_model=DailyCurtailmentResponse, dependencies=[Depends(require_api_key)])
+    def predict_daily_curtailment(request: DailyCurtailmentRequest) -> dict[str, Any]:
+        available_service = app.state.daily_curtailment_service
+        if available_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
+        try:
+            return available_service.predict_date(request.target_date_utc)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except (OSError, TimeoutError) as error:
+            raise HTTPException(status_code=503, detail=f"Forecast source unavailable: {error}") from error
 
     @app.get(
         "/dataset/info",

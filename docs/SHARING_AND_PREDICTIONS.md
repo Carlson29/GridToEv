@@ -175,6 +175,11 @@ in the website's server-side environment and proxy requests to GridToEV.
 
 ## How to read a response
 
+To retrieve the observed outcome later, copy `target_timestamp_utc` into
+`GET /actuals/v1`. For a 48-hour prediction array, send its target timestamps
+to `POST /actuals/v1/batch`. Actual values can be `pending` until the EirGrid
+archive is refreshed; see `docs/ACTUALS_API.md` for statuses and examples.
+
 - `dispatch_down_probability`: probability of any dispatch-down in the target interval.
 - `dispatch_down_event_prediction`: yes/no result after applying the learned threshold.
 - `risk_level`: low, medium, or high display category.

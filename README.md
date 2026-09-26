@@ -9,6 +9,7 @@ The notebooks are:
 - `notebooks/02_train_and_export_models.ipynb`
 - `notebooks/03_extend_history_and_forecast_vintages.ipynb`
 - `notebooks/05_build_semo_market_signals.ipynb`
+- `notebooks/06_daily_curtailment_v2.ipynb` (optional daily curtailment model)
 
 It writes one combined modelling table:
 
@@ -57,6 +58,18 @@ python scripts/run_purged_benchmark.py
 It keeps the original dataset, dates, and rollback model intact while excluding immature
 training labels at every boundary. See `docs/PURGED_BENCHMARK.md` for the measured impact and
 why older candidate results must be rerun against v2 before promotion.
+
+The separate multi-year point-forecast experiment and its no-promotion decision are in
+`docs/MULTI_YEAR_CAUSAL_MODEL.md`. Its same-row comparison against v1 and the
+optional-v2 branch decisions are in `docs/OPTIONAL_V2_RESEARCH.md`.
+
+An independent, opt-in **daily curtailment** model is documented in
+`docs/DAILY_CURTAILMENT_V2.md`. It forecasts curtailment risk and total MWh for the
+current UTC day at 00:00 UTC using archived day-ahead weather forecasts. It is not
+a replacement for the 30/60-minute v1 dispatch-down model; its API is disabled
+unless `GRIDTOEV_DAILY_MODEL_PATH` is set.
+Both models' observed outcomes can be queried through the read-only endpoints in
+`docs/ACTUALS_API.md` once a verified EirGrid actual is present in the archive.
 
 Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
 

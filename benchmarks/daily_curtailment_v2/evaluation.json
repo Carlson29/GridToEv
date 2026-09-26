@@ -1,0 +1,72 @@
+{
+  "model_version": "2.0.0-daily-experimental",
+  "task": "UTC-day curtailment event and energy, issued at 00:00 UTC",
+  "not_comparable_to_v1_mae": "v1 predicts half-hour dispatch-down, not daily curtailment",
+  "source": "EirGrid curtailment labels; Open-Meteo Previous Runs gfs_global previous_day1 archived forecast fields",
+  "forecast_lead_rule": "Each hourly forecast is for target hour minus 24 hours; latest daily forecast D-1 23:00 UTC",
+  "dataset_sha256": "0ad04074632cc2f15a499b0e3f3546124054259ecd566d9593c2ed7ff6ac2cab",
+  "date_ranges": {
+    "train": [
+      "2024-04-01T00:00:00+00:00",
+      "2024-12-31T00:00:00+00:00"
+    ],
+    "validation": [
+      "2025-01-01T00:00:00+00:00",
+      "2025-12-31T00:00:00+00:00"
+    ],
+    "test": [
+      "2026-01-01T00:00:00+00:00",
+      "2026-08-30T00:00:00+00:00"
+    ]
+  },
+  "rows": {
+    "train": 275,
+    "validation": 365,
+    "test": 242
+  },
+  "selected_amount_method": "two_stage",
+  "validation_amount_mae_mwh": {
+    "direct_median": 1618.7214519938884,
+    "two_stage": 1588.3494368394709
+  },
+  "test": {
+    "rows": 242,
+    "event_rate": 0.48760330578512395,
+    "event_average_precision": 0.8323261341922031,
+    "event_brier_score": 0.19060112336159235,
+    "event_roc_auc": 0.823127392017496,
+    "daily_mae_mwh": 1723.390575132749,
+    "positive_day_mae_mwh": 2916.924540936971,
+    "predicted_positive_fraction": 1.0
+  },
+  "test_zero_amount_baseline": {
+    "rows": 242,
+    "event_rate": 0.48760330578512395,
+    "event_average_precision": 0.48760330578512395,
+    "event_brier_score": 0.254775652924845,
+    "event_roc_auc": 0.5,
+    "daily_mae_mwh": 2310.3654586776865,
+    "positive_day_mae_mwh": 4738.207127118644,
+    "predicted_positive_fraction": 0.0
+  },
+  "test_monthly_median_baseline_mae_mwh": 2328.863152892562,
+  "test_by_quarter": {
+    "2026Q1": {
+      "rows": 90,
+      "model_mae_mwh": 1709.7825946225691,
+      "zero_mae_mwh": 2158.4231555555557
+    },
+    "2026Q2": {
+      "rows": 91,
+      "model_mae_mwh": 2057.746907438841,
+      "zero_mae_mwh": 3011.836054945055
+    },
+    "2026Q3": {
+      "rows": 61,
+      "model_mae_mwh": 1244.674050641961,
+      "zero_mae_mwh": 1488.086491803279
+    }
+  },
+  "source_caveat": "Previous Runs has a lead-time convention, not immutable per-hour publication timestamps; recheck live vintages before production promotion.",
+  "artifact_sha256": "6b2bcf6c3a3cff265bbfb581071e3bb4749d1459d7326909971d5cb5ea97d2de"
+}
