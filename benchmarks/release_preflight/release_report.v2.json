@@ -1,0 +1,56 @@
+{
+  "active_model_version": "1.1.0",
+  "candidate": {
+    "artifact_path": null,
+    "artifact_sha256": null
+  },
+  "contract_id": "dispatch-down-benchmark-v2-purged",
+  "decision": {
+    "candidate_approved": false,
+    "reason": "No new candidate passed the v2 purged rolling, final, interval and live-feature gates; keep v1.1.0."
+  },
+  "evaluation": {
+    "final_test_mae_mwh": 11.825026392111367,
+    "release_thresholds": {
+      "final_test_average_precision_min": 0.995,
+      "final_test_mae_mwh_max": 9.5,
+      "final_test_p10_p90_coverage_max": 0.9,
+      "final_test_p10_p90_coverage_min": 0.78,
+      "final_test_p50_pinball_loss_max": 6.0,
+      "final_test_rmse_mwh_max": 18.0,
+      "final_test_wape_max": 0.14,
+      "rolling_mae_improvement_min": 0.15
+    },
+    "rolling_mae_mwh": 10.09466909679408
+  },
+  "feature_contract": {
+    "count": 119,
+    "sha256": "31f0e3fc64694f136a730ebbc759bd4c3229d1d9916a76e35770570b8bc7eb99"
+  },
+  "rollback": {
+    "checks": {
+      "dataset": {
+        "passed": true,
+        "path": "data/processed/gridtoev_model_ready.csv",
+        "sha256": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510"
+      },
+      "metadata": {
+        "passed": true,
+        "path": "models/model_metadata.json",
+        "sha256": "e2ede1e02e5b4e7625b6985f5ce3b9f44f8848edce7f9189c9ad755f4a9d1a4f"
+      },
+      "metrics": {
+        "passed": true,
+        "path": "models/training_metrics.json",
+        "sha256": "6c7ff02624b397fd8074a4d4793cf2e873054c5433d0aee89ae21660ae1ec7ef"
+      },
+      "model_artifact": {
+        "passed": true,
+        "path": "models/gridtoev_model_bundle.joblib",
+        "sha256": "c5ce8f01b25ac4df186aca66cc154be9097b2c5529a8a89e1a9b78302d9d427f"
+      }
+    },
+    "verified": true
+  },
+  "schema_version": 2
+}

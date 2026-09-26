@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 import warnings
+import math
 from pathlib import Path
 
 
@@ -15,7 +16,7 @@ with warnings.catch_warnings():
     from fastapi.testclient import TestClient
 
 from gridtoev.api import create_app
-from gridtoev.inference import PredictionService
+from gridtoev.inference import FeatureValidationError, PredictionService
 from gridtoev.training import TrainingConfig, train_and_save
 from tests.test_training_and_inference import make_synthetic_dataset
 
@@ -109,6 +110,32 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertIn("prediction_interval_p90_mwh", response.json())
+
+    def test_feature_snapshot_rejects_extra_and_nonfinite_fields(self) -> None:
+        row = self.data.iloc[-30]
+        features = {
+            column: float(row[column])
+            for column in self.training_result.bundle["feature_columns"]
+            if column != "forecast_horizon_minutes"
+        }
+        request = {
+            "issue_timestamp_utc": row["issue_timestamp_utc"].isoformat(),
+            "forecast_horizon_minutes": 30,
+            "features": {**features, "unknown_signal": 1.0},
+        }
+        self.assertEqual(self.client.post("/predict/features", json=request).status_code, 422)
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        service.load()
+        with self.assertRaisesRegex(FeatureValidationError, "Non-finite"):
+            service.predict_features(
+                {**features, "dispatch_down_mwh_lag_1": math.inf}, 30
+            )
+
+    def test_model_info_exposes_feature_contract_not_server_path(self) -> None:
+        response = self.client.get("/model-info")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["feature_contract"]["feature_count"], len(self.training_result.bundle["feature_columns"]))
+        self.assertNotIn("model_path", response.json())
 
     def test_unknown_dataset_timestamp_returns_not_found(self) -> None:
         response = self.client.post(

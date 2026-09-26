@@ -150,6 +150,7 @@ python -m unittest discover -s tests -v
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
 Set `GRIDTOEV_API_KEY` on shared deployments; protected routes then require the `X-API-Key` header.
 See `docs/FORECAST_FEATURE_ENGINEERING.md` for the Issue #4 feature formulas and leakage controls.
+See `docs/SERVING_RELEASE_GATES.md` for v2 artifact authorization and live-feature checks.
 
 ## 48-hour performance sprint
 
