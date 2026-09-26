@@ -16,6 +16,7 @@ with warnings.catch_warnings():
     from fastapi.testclient import TestClient
 
 from gridtoev.api import create_app
+from gridtoev.actuals import ActualsService
 from gridtoev.inference import FeatureValidationError, PredictionService
 from gridtoev.training import TrainingConfig, train_and_save
 from tests.test_training_and_inference import make_synthetic_dataset
@@ -255,6 +256,104 @@ class ApiTests(unittest.TestCase):
                 headers={"X-API-Key": "team-secret"},
             )
             self.assertEqual(model_info.status_code, 200, model_info.text)
+
+    def test_existing_positional_api_key_argument_stays_protected(self) -> None:
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, "team-secret")) as client:
+            self.assertEqual(client.get("/predict/latest").status_code, 401)
+            self.assertEqual(client.get("/predict/latest", headers={"X-API-Key": "team-secret"}).status_code, 200)
+
+    def test_actual_lookup_routes_are_keyed_to_targets_and_protected(self) -> None:
+        class FakeActuals:
+            def coverage(self):
+                return {"source": "test", "available_target_timestamp_min_utc": "2026-01-01T00:00:00+00:00",
+                        "available_target_timestamp_max_utc": "2026-01-01T23:30:00+00:00",
+                        "complete_day_min_utc": "2026-01-01", "complete_day_max_utc": "2026-01-01",
+                        "notice": "snapshot"}
+
+            def point(self, target):
+                return {"status": "available", "target_timestamp_utc": target.isoformat(),
+                        "source_latest_timestamp_utc": "2026-01-01T23:30:00+00:00",
+                        "actual_dispatch_down_mwh": 3.0, "actual_curtailment_mwh": 2.0,
+                        "actual_constraint_mwh": 1.0, "actual_dispatch_down_event": True}
+
+            def points(self, targets):
+                return [self.point(target) for target in targets]
+
+            def day(self, target):
+                return {"status": "available", "target_date_utc": target.isoformat(),
+                        "source_latest_timestamp_utc": "2026-01-01T23:30:00+00:00",
+                        "actual_curtailment_mwh": 96.0, "actual_curtailment_event": True,
+                        "complete_half_hour_count": 48}
+
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, api_key="team-secret", actuals_service=FakeActuals())) as client:
+            self.assertEqual(client.get("/actuals/v1", params={"target_timestamp_utc": "2026-01-01T00:30:00Z"}).status_code, 401)
+            headers = {"X-API-Key": "team-secret"}
+            actual = client.get("/actuals/v1", params={"target_timestamp_utc": "2026-01-01T00:30:00Z"}, headers=headers)
+            self.assertEqual(actual.status_code, 200, actual.text)
+            self.assertEqual(actual.json()["actual_dispatch_down_mwh"], 3.0)
+            self.assertEqual(client.get("/actuals/daily-curtailment", params={"target_date_utc": "2026-01-01"}, headers=headers).json()["actual_curtailment_mwh"], 96.0)
+            batch = client.post("/actuals/v1/batch", json={"target_timestamps_utc": ["2026-01-01T00:30:00Z", "2026-01-01T01:00:00Z"]}, headers=headers)
+            self.assertEqual(batch.status_code, 200, batch.text)
+            self.assertEqual(batch.json()["count"], 2)
+            self.assertEqual(client.get("/actuals/coverage", headers=headers).status_code, 200)
+            self.assertEqual(client.get("/actuals/v1", params={"target_timestamp_utc": "2026-01-01T00:30:00"}, headers=headers).status_code, 422)
+
+    def test_missing_actuals_archive_does_not_affect_v1(self) -> None:
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        missing = self.dataset_path.parent / "no_actuals_here.csv.gz"
+        with TestClient(create_app(service, actuals_service=ActualsService(missing))) as client:
+            self.assertEqual(client.get("/health").status_code, 200)
+            response = client.get("/actuals/coverage")
+            self.assertEqual(response.status_code, 503)
+            self.assertNotIn(str(missing), response.text)
+
+    def test_optional_daily_model_does_not_change_v1_when_unconfigured(self) -> None:
+        response = self.client.post(
+            "/predict/curtailment/day", json={"target_date_utc": "2026-09-26"}
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.client.get("/health").status_code, 200)
+
+    def test_broken_optional_daily_model_cannot_take_v1_offline(self) -> None:
+        class BrokenDailyService:
+            def load(self):
+                raise ValueError("bad optional artifact")
+
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, daily_service=BrokenDailyService())) as client:
+            self.assertEqual(client.get("/health").status_code, 200)
+            self.assertEqual(client.get("/predict/latest").status_code, 200)
+            self.assertEqual(client.post("/predict/curtailment/day", json={"target_date_utc": "2026-01-15"}).status_code, 503)
+
+    def test_daily_endpoint_has_a_separate_prediction_contract(self) -> None:
+        class FakeDailyService:
+            bundle = {"metadata": {"model_version": "2.0.0-daily-experimental"}}
+
+            def load(self):
+                pass
+
+            def predict_date(self, target_date):
+                return {
+                    "model_version": "2.0.0-daily-experimental",
+                    "experimental": True,
+                    "target_date_utc": target_date.isoformat(),
+                    "issue_timestamp_utc": f"{target_date.isoformat()}T00:00:00+00:00",
+                    "forecast_max_available_at_utc": "2026-09-25T23:00:00+00:00",
+                    "curtailment_event_probability": 0.7,
+                    "predicted_curtailment_mwh": 1200.0,
+                    "target": "Total EirGrid curtailment during this UTC day",
+                }
+
+        with TestClient(create_app(self.client.app.state.prediction_service, daily_service=FakeDailyService())) as client:
+            response = client.post(
+                "/predict/curtailment/day", json={"target_date_utc": "2026-09-26"}
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["target_date_utc"], "2026-09-26")
+            self.assertEqual(client.get("/model-info/daily-curtailment").json()["model_version"],
+                             "2.0.0-daily-experimental")
 
 
 if __name__ == "__main__":

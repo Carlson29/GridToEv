@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "experiment_id": "multi-year-vs-v1-same-rows-v1",
+  "v1_dataset_path": "data/processed/gridtoev_model_ready.csv",
+  "history_path": "data/processed/eirgrid_core_history_30min.csv.gz",
+  "history_sha256": "48c374974a504c838201bb7c6c8356863d69844ce93982bf172f07c2416ad454",
+  "benchmark_contract_path": "config/benchmark_contract.v2.json",
+  "historical_train_target_before_utc": "2025-01-01T00:00:00Z",
+  "observation_delay_hours": 24,
+  "publication_latency_verified": false,
+  "forecast_horizons_minutes": [30, 60],
+  "candidate": {
+    "type": "horizon_specific_hist_gradient_boosting_regressor",
+    "learning_rate": 0.05,
+    "max_iter": 80,
+    "max_leaf_nodes": 31,
+    "min_samples_leaf": 100,
+    "l2_regularization": 5.0,
+    "random_state": 42
+  }
+}

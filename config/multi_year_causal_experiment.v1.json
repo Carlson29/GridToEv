@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "experiment_id": "multi-year-causal-point-v1",
+  "source_path": "data/processed/eirgrid_core_history_30min.csv.gz",
+  "observation_delay_hours": 24,
+  "publication_latency_verified": false,
+  "development_months_utc": ["2026-05", "2026-06", "2026-07"],
+  "sealed_final_month_utc": "2026-08",
+  "forecast_horizons_minutes": [30, 60],
+  "baseline": "last_observation_at_least_24_hours_old",
+  "candidate": {
+    "type": "horizon_specific_hist_gradient_boosting_regressor",
+    "learning_rate": 0.05,
+    "max_iter": 80,
+    "max_leaf_nodes": 31,
+    "min_samples_leaf": 100,
+    "l2_regularization": 5.0,
+    "random_state": 42
+  },
+  "development_gate": {
+    "aggregate_mae_improvement_min": 0.15,
+    "improving_folds_min": 3,
+    "horizon_regression_tolerance": 0.0,
+    "worst_fold_regression_tolerance": 0.02
+  },
+  "promotion_requires": [
+    "development_gate",
+    "single_sealed_final_score",
+    "v2_comparable_serving_baseline",
+    "event_and_interval_gates",
+    "verified_live_publication_latency",
+    "live_feature_ingestion_and_contract"
+  ]
+}
