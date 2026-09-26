@@ -13,3 +13,5 @@ services:
         sync: false
       - key: GRIDTOEV_CORS_ORIGINS
         sync: false
+      - key: GRIDTOEV_DAILY_MODEL_PATH
+        value: "/app/models/v2/daily_curtailment_bundle.joblib"

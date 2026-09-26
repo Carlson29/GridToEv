@@ -331,6 +331,7 @@ def create_app(
             "status": "ready",
             "model_version": prediction_service.metadata["model_version"],
             "dataset_loaded": prediction_service.dataset is not None,
+            "daily_model_available": app.state.daily_curtailment_service is not None,
         }
 
     @app.get("/model-info", dependencies=[Depends(require_api_key)])
