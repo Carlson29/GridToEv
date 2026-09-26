@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "experiment_id": "optional-horizon-residual-v2",
+  "benchmark_contract_path": "config/benchmark_contract.v2.json",
+  "baseline_model_version": "1.1.0",
+  "candidate_families": ["all_v1_features", "all_v1_features_plus_physical_interactions"],
+  "estimator": {
+    "type": "horizon_specific_extra_trees_residual",
+    "n_estimators": 240,
+    "min_samples_leaf": 3,
+    "max_features": 0.75,
+    "random_state": 42
+  },
+  "candidate_weight_grid": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+  "development_gate": {
+    "rolling_mae_improvement_min": 0.0,
+    "maximum_single_horizon_regression_fraction": 0.03
+  },
+  "experimental_artifact_gate": {
+    "final_test_mae_improvement_min": 0.0,
+    "requires_v1_bundle_hash_match": true
+  },
+  "limits": [
+    "No September forecast, SEMO, frequency, or outage features without overlapping labels",
+    "No multi-year observed features until original publication times are verified",
+    "Experimental opt-in point forecast; not the full production v2 release gate"
+  ]
+}
