@@ -23,6 +23,7 @@ from gridtoev.eirgrid_history import (
     read_dispatch_workbook,
     read_system_workbook,
 )
+from gridtoev.forecast_features import build_forecast_feature_table
 from gridtoev.forecast_vintages import (
     asof_join_forecasts,
     deduplicate_vintages,
@@ -344,6 +345,34 @@ def build_asof_feature_matrix(core: pd.DataFrame, vintages: pd.DataFrame) -> pd.
     return result
 
 
+def build_engineered_forecast_features(
+    feature_matrix: pd.DataFrame,
+    core: pd.DataFrame,
+    vintages: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Write the Issue #4 feature matrix, dictionary, and validation report."""
+
+    table, dictionary, quality = build_forecast_feature_table(
+        feature_matrix,
+        core,
+        vintages,
+    )
+    table.to_csv(
+        PROCESSED_ROOT / "forecast_model_features_30_60.csv",
+        index=False,
+        date_format="%Y-%m-%dT%H:%M:%SZ",
+    )
+    dictionary.to_csv(
+        PROCESSED_ROOT / "forecast_model_feature_dictionary.csv",
+        index=False,
+    )
+    (PROCESSED_ROOT / "forecast_model_feature_quality_report.json").write_text(
+        json.dumps(quality, indent=2),
+        encoding="utf-8",
+    )
+    return table, quality
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -367,6 +396,11 @@ def main() -> None:
         workers=args.workers,
     )
     feature_matrix = build_asof_feature_matrix(core, vintages)
+    engineered_features, engineered_quality = build_engineered_forecast_features(
+        feature_matrix,
+        core,
+        vintages,
+    )
     write_manifest(
         [*history_manifest, *forecast_manifest],
         PROCESSED_ROOT / "extended_source_manifest.csv",
@@ -383,6 +417,12 @@ def main() -> None:
                     forecast_quality["feature_coverage"].keys()
                 ),
                 "asof_feature_rows": len(feature_matrix),
+                "engineered_feature_rows": len(engineered_features),
+                "engineered_feature_columns": len(engineered_features.columns),
+                "engineered_feature_leakage_violations": (
+                    engineered_quality["future_publication_violations"]
+                    + engineered_quality["future_observation_violations"]
+                ),
             },
             indent=2,
         )

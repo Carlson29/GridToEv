@@ -8,6 +8,7 @@ The notebooks are:
 - `notebooks/01_build_model_ready_dataset.ipynb`
 - `notebooks/02_train_and_export_models.ipynb`
 - `notebooks/03_extend_history_and_forecast_vintages.ipynb`
+- `notebooks/05_build_semo_market_signals.ipynb`
 
 It writes one combined modelling table:
 
@@ -46,6 +47,16 @@ python scripts/run_benchmark.py
 That command validates dataset order and publication times, selects operating settings without final-
 test access, scores the sealed test only after selection, verifies the committed hashes and metrics,
 and writes the granular report and experiment registry under `benchmarks/v1.1.0/`.
+That historical v1 contract does not purge labels that finish after the next score period
+starts. For new model comparisons, use the corrected v2 contract instead:
+
+```powershell
+python scripts/run_purged_benchmark.py
+```
+
+It keeps the original dataset, dates, and rollback model intact while excluding immature
+training labels at every boundary. See `docs/PURGED_BENCHMARK.md` for the measured impact and
+why older candidate results must be rerun against v2 before promotion.
 
 Build the multi-year EirGrid history and leakage-safe forecast-vintage tables:
 
@@ -58,6 +69,16 @@ builds 2021-present half-hourly system/dispatch history, collects retained SEMO 
 interconnector forecast publications, snapshots the EirGrid solar forecast, and performs backward
 as-of joins for 30- and 60-minute horizons. See `docs/EXTENDED_DATA_PIPELINE.md` for the schema,
 quality gates, current measured coverage, and source limitations.
+
+Build the SEMO market and operational signal family:
+
+```powershell
+python scripts/build_semo_market_data.py --days 2 --workers 12
+```
+
+This produces auditable, publication-time-safe schedule, PN, forecast-imbalance, NTC, lagged
+imbalance-price, reserve, and SSII/SIFF features. See `docs/SEMO_MARKET_SIGNALS.md` for the full data
+contract, outputs, leakage controls, and current ablation decision.
 
 Start the prediction API:
 
@@ -102,8 +123,17 @@ python -m unittest discover -s tests -v
   flags; gzip is read directly by pandas.
 - `forecast_vintages.csv.gz`: long-form target/publication/retrieval-time forecast revisions.
 - `forecast_features_asof_30_60.csv`: leakage-safe 30/60-minute forecast feature matrix.
+- `forecast_model_features_30_60.csv`: causal forecast-error, renewable-state and grid-headroom table.
+- `forecast_model_feature_dictionary.csv`: formula, source, unit and availability rule for every column.
+- `forecast_model_feature_quality_report.json`: Issue #4 leakage, key, coverage and missingness checks.
 - `extended_source_manifest.csv`: provider, report, URL, retrieval time, checksum, row count, schema,
   and per-file coverage for the extended sources.
+- `semo_market_signals.csv.gz`: normalized long-form SEMO market and operational signals.
+- `semo_market_features_asof_30_60.csv`: leakage-safe SEMO features for each issue time and horizon.
+- `semo_market_feature_dictionary.csv`: complete SEMO feature definitions and availability rules.
+- `semo_market_source_manifest.csv`: source URL, retrieval timestamp, checksum, schema, and coverage.
+- `semo_market_quality_report.json`: per-report coverage, staleness, missingness, and leakage checks.
+- `benchmarks/semo_market_signals/ablation_report.json`: named feature-family evaluation decision.
 
 ## Prediction API
 
@@ -119,6 +149,7 @@ python -m unittest discover -s tests -v
 
 See `docs/HOW_IT_WORKS.md` for the end-to-end explanation and request flow.
 Set `GRIDTOEV_API_KEY` on shared deployments; protected routes then require the `X-API-Key` header.
+See `docs/FORECAST_FEATURE_ENGINEERING.md` for the Issue #4 feature formulas and leakage controls.
 
 ## 48-hour performance sprint
 

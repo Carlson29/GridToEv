@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "contract_id": "dispatch-down-benchmark-v2-purged",
+  "baseline_model_version": "1.1.0",
+  "label_maturity_policy": "target_before_score_issue",
+  "split": {
+    "train_fraction": 0.7,
+    "validation_fraction": 0.15,
+    "final_test_fraction": 0.15,
+    "final_test_policy": "score_only_after_candidate_selection"
+  },
+  "rolling_origin": {
+    "train_score_windows": [[0.4, 0.6], [0.6, 0.8], [0.8, 1.0]],
+    "include_validation_fold": true
+  },
+  "release_thresholds": {
+    "rolling_mae_improvement_min": 0.15,
+    "final_test_mae_mwh_max": 9.5,
+    "final_test_wape_max": 0.14,
+    "final_test_rmse_mwh_max": 18.0,
+    "final_test_p50_pinball_loss_max": 6.0,
+    "final_test_p10_p90_coverage_min": 0.78,
+    "final_test_p10_p90_coverage_max": 0.9,
+    "final_test_average_precision_min": 0.995
+  },
+  "frozen_baseline": {
+    "dataset_path": "data/processed/gridtoev_model_ready.csv",
+    "dataset_sha256": "92341680d618b71e0c9a7a6c8e6cc62b17f13a4f86d42db6299a90ac0c35e510",
+    "model_artifact_path": "models/gridtoev_model_bundle.joblib",
+    "model_artifact_sha256": "c5ce8f01b25ac4df186aca66cc154be9097b2c5529a8a89e1a9b78302d9d427f",
+    "metrics_path": "models/training_metrics.json",
+    "metrics_sha256": "6c7ff02624b397fd8074a4d4793cf2e873054c5433d0aee89ae21660ae1ec7ef",
+    "metadata_path": "models/model_metadata.json",
+    "metadata_sha256": "e2ede1e02e5b4e7625b6985f5ce3b9f44f8848edce7f9189c9ad755f4a9d1a4f",
+    "final_test_period": {
+      "issue_timestamp_min_utc": "2026-01-27T11:00:00+00:00",
+      "issue_timestamp_max_utc": "2026-01-31T22:30:00+00:00",
+      "rows": 431
+    },
+    "metrics": {
+      "dispatch_down_mae_mwh": 11.825026392111367,
+      "dispatch_down_rmse_mwh": 20.590388344414013,
+      "dispatch_down_wape": 0.1721779585205615,
+      "event_average_precision": 0.9997830434421965,
+      "p50_pinball_loss": 7.012789848039262,
+      "p10_p90_empirical_coverage": 0.7169373549883991
+    },
+    "rolling_mae_mwh": 10.09466909679408,
+    "numeric_tolerance": 1e-09
+  }
+}

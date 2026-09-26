@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<OutboundData DatasetName="PUB_HrlyNetImbalVolumeForecast" PublishTime="2026-09-23T21:00:01">
+  <PUB_HrlyNetImbalVolumeForecast ROW="1" TradeDate="2026-09-24" NetImbalanceForecast="7190.5" />
+</OutboundData>

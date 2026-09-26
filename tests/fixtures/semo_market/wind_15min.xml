@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<OutboundData DatasetName="PUB_15MinAggWindFcst" PublishTime="2026-09-23T20:00:00">
+  <PUB_15MinAggWindFcst ROW="1" StartTime="2026-09-23T22:00:00" EndTime="2026-09-23T22:15:00" Forecast="500" />
+</OutboundData>

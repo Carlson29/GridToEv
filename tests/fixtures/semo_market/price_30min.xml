@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<OutboundData DatasetName="PUB_30MinAvgImbalPrc" PublishTime="2026-09-23T21:30:00">
+  <PUB_30MinAvgImbalPrc ROW="1">
+    <StartTime>2026-09-23T20:30:00</StartTime><EndTime>2026-09-23T21:00:00</EndTime>
+    <NetImbalanceVolume>-8.82</NetImbalanceVolume><ImbalanceSettlementPrice>174.07</ImbalanceSettlementPrice>
+  </PUB_30MinAvgImbalPrc>
+</OutboundData>
