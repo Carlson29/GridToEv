@@ -60,6 +60,7 @@ class BenchmarkContract:
     include_validation_fold: bool
     release_thresholds: dict[str, float]
     frozen_baseline: dict[str, Any]
+    label_maturity_policy: str = "legacy_issue_order_only"
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,9 @@ class RollingOriginFold:
     name: str
     fit: pd.DataFrame
     score: pd.DataFrame
+    score_cutoff_utc: pd.Timestamp | None = None
+    purged_fit_rows: int = 0
+    purged_score_rows: int = 0
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,14 @@ def load_benchmark_contract(path: Path | str = DEFAULT_CONTRACT_PATH) -> Benchma
         - 1.0
     ) > 1e-12:
         raise ValueError("Benchmark split fractions must sum to one")
+    if int(payload["schema_version"]) >= 2 and "label_maturity_policy" not in payload:
+        raise ValueError("A v2 benchmark contract must define label_maturity_policy")
+    label_maturity_policy = payload.get("label_maturity_policy", "legacy_issue_order_only")
+    if label_maturity_policy not in {
+        "legacy_issue_order_only",
+        "target_before_score_issue",
+    }:
+        raise ValueError(f"Unknown label maturity policy: {label_maturity_policy}")
     return BenchmarkContract(
         schema_version=int(payload["schema_version"]),
         contract_id=str(payload["contract_id"]),
@@ -119,7 +131,24 @@ def load_benchmark_contract(path: Path | str = DEFAULT_CONTRACT_PATH) -> Benchma
             key: float(value) for key, value in payload["release_thresholds"].items()
         },
         frozen_baseline=dict(payload["frozen_baseline"]),
+        label_maturity_policy=label_maturity_policy,
     )
+
+
+def _fit_with_mature_labels(
+    fit: pd.DataFrame,
+    score_start: pd.Timestamp | None,
+    contract: BenchmarkContract,
+) -> pd.DataFrame:
+    """Exclude labels that would not exist when scoring first begins."""
+    if contract.label_maturity_policy == "legacy_issue_order_only":
+        return fit.copy()
+    if score_start is None:
+        raise ValueError("A purged benchmark requires a score boundary")
+    mature = fit.loc[fit["target_timestamp_utc"].lt(score_start)].copy()
+    if mature.empty:
+        raise ValueError("No mature training labels remain before the score boundary")
+    return mature
 
 
 def validate_benchmark_dataset(path: Path | str) -> None:
@@ -183,8 +212,16 @@ def build_rolling_origin_folds(
     train: pd.DataFrame,
     validation: pd.DataFrame,
     contract: BenchmarkContract,
+    *,
+    final_test_start_utc: pd.Timestamp | None = None,
 ) -> list[RollingOriginFold]:
     """Build the versioned expanding-window folds without including final-test rows."""
+    if contract.label_maturity_policy != "legacy_issue_order_only":
+        if final_test_start_utc is None:
+            raise ValueError("Purged folds require final_test_start_utc (timestamp only)")
+        final_test_start_utc = pd.Timestamp(final_test_start_utc)
+        if final_test_start_utc.tzinfo is None:
+            raise ValueError("final_test_start_utc must be timezone-aware")
     unique_times = np.array(sorted(train["issue_timestamp_utc"].unique()))
     folds: list[RollingOriginFold] = []
     for index, (train_end_fraction, score_end_fraction) in enumerate(
@@ -200,10 +237,42 @@ def build_rolling_origin_folds(
         score = train.loc[train["issue_timestamp_utc"].isin(score_times)].copy()
         if fit.empty or score.empty:
             raise ValueError(f"Rolling-origin fold {index} produced an empty partition")
-        folds.append(RollingOriginFold(f"train_fold_{index}", fit, score))
+        first_score_issue = score["issue_timestamp_utc"].min()
+        original_fit_rows, original_score_rows = len(fit), len(score)
+        score_cutoff = (
+            pd.Timestamp(unique_times[score_end])
+            if score_end < len(unique_times)
+            else validation["issue_timestamp_utc"].min()
+        )
+        fit = _fit_with_mature_labels(fit, first_score_issue, contract)
+        score = _fit_with_mature_labels(score, score_cutoff, contract)
+        folds.append(
+            RollingOriginFold(
+                f"train_fold_{index}",
+                fit,
+                score,
+                score_cutoff if contract.label_maturity_policy != "legacy_issue_order_only" else None,
+                original_fit_rows - len(fit),
+                original_score_rows - len(score),
+            )
+        )
 
     if contract.include_validation_fold:
-        folds.append(RollingOriginFold("validation_fold", train.copy(), validation.copy()))
+        validation_start = validation["issue_timestamp_utc"].min()
+        validation_fit = _fit_with_mature_labels(train, validation_start, contract)
+        validation_score = _fit_with_mature_labels(
+            validation, final_test_start_utc, contract
+        )
+        folds.append(
+            RollingOriginFold(
+                "validation_fold",
+                validation_fit,
+                validation_score,
+                final_test_start_utc,
+                len(train) - len(validation_fit),
+                len(validation) - len(validation_score),
+            )
+        )
 
     for fold in folds:
         if fold.fit["issue_timestamp_utc"].max() >= fold.score["issue_timestamp_utc"].min():
@@ -261,17 +330,57 @@ def _fold_predictions(
     return blended
 
 
+def _select_fold_local_policy(
+    fold: RollingOriginFold,
+    columns: list[str],
+    config: TrainingConfig,
+    contract: BenchmarkContract,
+) -> OperatingPolicy:
+    """Tune a v2 fold using only labels available before that fold scores."""
+    times = np.array(sorted(fold.fit["issue_timestamp_utc"].unique()))
+    inner_end = max(1, int(len(times) * 0.8))
+    if inner_end >= len(times):
+        raise ValueError(f"Fold {fold.name} has no inner policy-validation period")
+    inner_fit = fold.fit.loc[fold.fit["issue_timestamp_utc"].isin(times[:inner_end])].copy()
+    inner_validation = fold.fit.loc[
+        fold.fit["issue_timestamp_utc"].isin(times[inner_end:])
+    ].copy()
+    inner_fit = _fit_with_mature_labels(
+        inner_fit, inner_validation["issue_timestamp_utc"].min(), contract
+    )
+    models = _fit_models(_build_models(config), inner_fit, columns)
+    return _select_operating_policy(
+        models,
+        inner_fit,
+        inner_validation,
+        columns,
+        config,
+    )
+
+
 def _fold_report(
     fold: RollingOriginFold,
     columns: list[str],
     policy: OperatingPolicy,
     config: TrainingConfig,
+    contract: BenchmarkContract,
 ) -> tuple[dict[str, Any], np.ndarray]:
+    policy_source = "legacy_outer_validation"
+    if contract.label_maturity_policy != "legacy_issue_order_only":
+        policy = _select_fold_local_policy(fold, columns, config, contract)
+        policy_source = "fold_fit_only"
     predictions = _fold_predictions(fold, columns, policy, config)
     report = {
         "name": fold.name,
+        "operating_policy_source": policy_source,
+        "operating_policy": asdict(policy),
         "fit": _partition_metadata(fold.fit),
         "score": _partition_metadata(fold.score),
+        "score_label_cutoff_utc": (
+            fold.score_cutoff_utc.isoformat() if fold.score_cutoff_utc is not None else None
+        ),
+        "purged_fit_rows": fold.purged_fit_rows,
+        "purged_score_rows": fold.purged_score_rows,
         "dispatch_breakdown": _dispatch_breakdown(fold.score, predictions),
     }
     return report, predictions
@@ -362,33 +471,56 @@ def run_baseline_benchmark(
         train_fraction=contract.train_fraction,
         validation_fraction=contract.validation_fraction,
     )
+    final_test_start_utc = final_test["issue_timestamp_utc"].min()
+    validation_start_utc = validation["issue_timestamp_utc"].min()
+    selection_train = _fit_with_mature_labels(train, validation_start_utc, contract)
+    selection_validation = _fit_with_mature_labels(
+        validation, final_test_start_utc, contract
+    )
 
-    # Candidate settings are selected using only train and validation. The final-test frame is
-    # deliberately passed for the first time to _score_models after the policy is frozen.
-    evaluation_models = _fit_models(_build_models(config), train, columns)
+    # Only the first final-test issue timestamp defines the maturity cutoff.
+    # No final-test labels enter operating-policy or rolling-fold selection.
+    evaluation_models = _fit_models(_build_models(config), selection_train, columns)
     policy = _select_operating_policy(
         evaluation_models,
-        train,
-        validation,
+        selection_train,
+        selection_validation,
         columns,
         config,
     )
-    metrics = _score_models(evaluation_models, validation, final_test, columns, policy)
-
-    if verify_frozen_baseline:
-        _verify_frozen_baseline(contract, dataset_path, metrics, final_test)
-
-    rolling_folds = build_rolling_origin_folds(train, validation, contract)
+    rolling_folds = build_rolling_origin_folds(
+        train,
+        validation,
+        contract,
+        final_test_start_utc=final_test_start_utc,
+    )
     fold_reports: list[dict[str, Any]] = []
     rolling_frames: list[pd.DataFrame] = []
     rolling_predictions: list[np.ndarray] = []
     for fold in rolling_folds:
-        fold_metrics, fold_prediction = _fold_report(fold, columns, policy, config)
+        fold_metrics, fold_prediction = _fold_report(
+            fold, columns, policy, config, contract
+        )
         fold_reports.append(fold_metrics)
         rolling_frames.append(fold.score)
         rolling_predictions.append(fold_prediction)
     rolling_frame = pd.concat(rolling_frames, ignore_index=True)
     rolling_prediction = np.concatenate(rolling_predictions)
+    rolling_breakdown = _dispatch_breakdown(rolling_frame, rolling_prediction)
+    if verify_frozen_baseline and "rolling_mae_mwh" in contract.frozen_baseline:
+        observed = rolling_breakdown["overall"]["mae"]
+        expected = float(contract.frozen_baseline["rolling_mae_mwh"])
+        tolerance = float(contract.frozen_baseline["numeric_tolerance"])
+        if not np.isclose(observed, expected, rtol=0.0, atol=tolerance):
+            raise BenchmarkVerificationError(
+                f"Frozen rolling MAE mismatch: expected {expected}, got {observed}"
+            )
+
+    # The sealed labels are scored only after the global and fold-local policies
+    # have been fixed using development data.
+    metrics = _score_models(evaluation_models, validation, final_test, columns, policy)
+    if verify_frozen_baseline:
+        _verify_frozen_baseline(contract, dataset_path, metrics, final_test)
 
     final_test_ml = _dispatch_ml_prediction(evaluation_models, final_test, columns)
     final_test_prediction, _ = _blend_dispatch_predictions(
@@ -408,6 +540,7 @@ def run_baseline_benchmark(
             "baseline_model_version": contract.baseline_model_version,
             "release_thresholds": contract.release_thresholds,
             "final_test_policy": contract.final_test_policy,
+            "label_maturity_policy": contract.label_maturity_policy,
         },
         "run": {
             "run_id": (
@@ -438,12 +571,39 @@ def run_baseline_benchmark(
             "inputs": ["train", "validation"],
             "final_test_labels_available": False,
             "operating_policy": asdict(policy),
+            "label_maturity": {
+                "policy": contract.label_maturity_policy,
+                "purged_train_rows": len(train) - len(selection_train),
+                "purged_validation_rows": len(validation) - len(selection_validation),
+                "fit_target_max_utc": selection_train["target_timestamp_utc"].max().isoformat(),
+                "score_issue_min_utc": validation_start_utc.isoformat(),
+                "score_target_max_utc": selection_validation[
+                    "target_timestamp_utc"
+                ].max().isoformat(),
+                "final_issue_min_utc": final_test_start_utc.isoformat(),
+                "passed": bool(
+                    selection_train["target_timestamp_utc"].max()
+                    < validation_start_utc
+                    and selection_validation["target_timestamp_utc"].max()
+                    < final_test_start_utc
+                ),
+            },
         },
         "rolling_origin": {
             "windows": [list(window) for window in contract.rolling_origin_windows],
             "include_validation_fold": contract.include_validation_fold,
             "folds": fold_reports,
-            "aggregate": _dispatch_breakdown(rolling_frame, rolling_prediction),
+            "label_maturity_verified": all(
+                fold.fit["target_timestamp_utc"].max()
+                < fold.score["issue_timestamp_utc"].min()
+                for fold in rolling_folds
+            ),
+            "score_label_maturity_verified": all(
+                fold.score_cutoff_utc is not None
+                and fold.score["target_timestamp_utc"].max() < fold.score_cutoff_utc
+                for fold in rolling_folds
+            ),
+            "aggregate": rolling_breakdown,
         },
         "final_test": {
             "sealed_during_selection": True,
