@@ -44,7 +44,7 @@ API_DESCRIPTION = """## Choose the right model
 
 V1's dataset replay endpoints use a **fixed historical dataset**. In particular, `/predict/latest` means the latest *dataset row*, **not the current time**. A V1 window is repeated 30/60-minute predictions for at most 24 historical hours, **not a day-ahead forecast**. V2's `/day` route fetches archived 24-hour-lead weather for dates through today UTC. Its `/window` route replays 1–7 consecutive days **already in the bundled V2 model dataset**, not future live weather. The version shown in the Swagger header does not choose a model; each prediction reports its own `model_version`.
 
-Send the shared `X-API-Key` using **Authorize** for protected routes. `GET /health` is public and shows whether optional v2 loaded. To compare a prediction with reality, copy `target_timestamp_utc` from v1 to `/actuals/v1`, or `target_date_utc` from v2 to `/actuals/daily-curtailment`. Actuals come from a separately refreshed EirGrid snapshot and may be `pending` or `missing`.
+Send the shared `X-API-Key` using **Authorize** for protected routes. `GET /health` is public and shows whether optional v2 loaded. To compare a prediction with reality, copy `target_timestamp_utc` from v1 to `/actuals/v1`, or `target_date_utc` from v2 to `/actuals/daily-curtailment`. For ordered arrays, use `/actuals/v1/window` or `/actuals/daily-curtailment/window`. Actuals come from a separately refreshed EirGrid snapshot and may be `pending` or `missing`; raw forecast inputs cannot create actual outcomes.
 
 `GET /models/catalog` lists the two tasks. Model-info scores are historical evaluations, **not the error of an individual prediction**. Raw-input routes validate shape and claimed availability times but cannot independently verify that caller-supplied values were truly published at those times; they do not fetch a live V1 source feed.
 
@@ -66,6 +66,13 @@ def _require_timezone(value: datetime) -> datetime:
             "2026-01-15T12:30:00Z"
         )
     return value.astimezone(timezone.utc)
+
+
+def _require_utc_half_hour(value: datetime) -> datetime:
+    value = _require_timezone(value)
+    if value.minute not in (0, 30) or value.second or value.microsecond:
+        raise ValueError("Target must align with a UTC half-hour boundary")
+    return value
 
 
 def _v1_raw_field_description(name: str) -> str:
@@ -352,13 +359,70 @@ class DailyActualResponse(BaseModel):
     complete_half_hour_count: int = Field(description="48 for an available complete UTC day, otherwise 0.")
 
 
+class V1ActualsWindowRequest(BaseModel):
+    start_target_timestamp_utc: datetime = Field(
+        description="First V1 target half-hour to look up, copied from a prediction's target_timestamp_utc. This is a target time, not an issue time.",
+        examples=["2026-01-15T12:30:00Z"],
+    )
+    duration_hours: float = Field(
+        default=2.0, ge=0.5, le=24.5, multiple_of=0.5,
+        description="Number of consecutive target half-hours to look up: 0.5–24.5 hours in 0.5-hour increments (1–49 results). A V1 24-hour issue window with both horizons has 24.5 hours of distinct targets.",
+    )
+
+    _validate_start_target = field_validator("start_target_timestamp_utc")(_require_utc_half_hour)
+
+
+class V1ActualsWindowResponse(BaseModel):
+    semantics: Literal["observed_half_hour_target_window"]
+    start_target_timestamp_utc: str
+    end_target_timestamp_exclusive_utc: str
+    duration_hours: float
+    interval_minutes: Literal[30]
+    actual_count: int
+    status_counts: dict[str, int] = Field(description="Counts of available, pending and missing archive outcomes; missing/pending are not zero.")
+    actuals: list[PointActualResponse] = Field(description="One observed-outcome lookup per target half-hour, in chronological order.")
+    notice: str = Field(description="Archive and prediction-input coverage are separate; these are observations, not model predictions.")
+
+
+class DailyActualsWindowRequest(BaseModel):
+    start_date_utc: date = Field(
+        description="First V2 target UTC day to look up, YYYY-MM-DD. This is the same date field used by /predict/curtailment/window.",
+        examples=["2026-04-28"],
+    )
+    days: int = Field(
+        default=7, ge=1, le=7,
+        description="Number of consecutive UTC-day actuals to look up, 1–7.",
+    )
+
+
+class DailyActualsWindowResponse(BaseModel):
+    semantics: Literal["observed_complete_day_window"]
+    start_date_utc: str
+    end_date_exclusive_utc: str
+    actual_count: int
+    status_counts: dict[str, int] = Field(description="Counts of available, pending and missing complete-day archive outcomes.")
+    actuals: list[DailyActualResponse] = Field(description="One actual curtailment total per UTC day, in chronological order; unavailable outcomes stay null.")
+    notice: str = Field(description="These are EirGrid observed outcomes, not V2 predictions or derived weather values.")
+
+
+class V1PredictionDatasetCoverage(BaseModel):
+    available_issue_timestamp_min_utc: str = Field(description="Earliest V1 model-ready issue time; this is not an observed-outcome timestamp.")
+    available_issue_timestamp_max_utc: str = Field(description="Latest V1 model-ready issue time across the supported horizons; individual horizons may end earlier.")
+    available_issue_timestamp_count: int = Field(description="Number of distinct V1 model-ready issue times.")
+    supported_forecast_horizons_minutes: list[int] = Field(description="V1 horizons available in the model-ready dataset.")
+    coverage_endpoint: Literal["/dataset/info"] = Field(description="Authoritative V1 dataset coverage and input-format endpoint.")
+
+
 class ActualsCoverageResponse(BaseModel):
+    coverage_kind: Literal["observed_outcomes_archive"] = Field(description="These top-level dates cover observed outcomes, not V1 prediction inputs.")
     source: str = Field(description="EirGrid observation archive, separate from either prediction model.")
     available_target_timestamp_min_utc: str = Field(description="Earliest stored half-hour target for V1 actual-value lookups.")
     available_target_timestamp_max_utc: str = Field(description="Latest stored half-hour target for V1 actual-value lookups.")
     complete_day_min_utc: str | None = Field(description="Earliest complete UTC day for V2 actual-value lookups.")
     complete_day_max_utc: str | None = Field(description="Latest complete UTC day for V2 actual-value lookups.")
     notice: str = Field(description="Archive refresh limitations; this endpoint does not describe model-training coverage.")
+    coverage_notice: str = Field(description="Explains the difference between observed-outcome and V1 prediction-input dates.")
+    v1_prediction_dataset: V1PredictionDatasetCoverage = Field(description="Separate V1 model-ready input range. Use /dataset/info for full details.")
 
 
 class PointActualBatchRequest(BaseModel):
@@ -611,15 +675,31 @@ def create_app(
         response_model=ActualsCoverageResponse,
         dependencies=[Depends(require_api_key)],
         tags=[TAG_ACTUALS],
-        summary="Actuals archive coverage for V1 half-hours and V2 complete days",
-        description="No input. This EirGrid observation snapshot is separate from both modelling datasets. Half-hour bounds guide V1 actual lookups; complete-day bounds guide V2 actual lookups. Later actuals are pending until the archive is refreshed.",
+        summary="Observed-outcome archive dates, plus separate V1 prediction-input dates",
+        description="No input. Top-level bounds describe the EirGrid **actuals archive**, not dates accepted by V1 prediction routes. `v1_prediction_dataset` shows the separately loaded V1 30/60-minute issue-time range; `/dataset/info` has its full rules. Complete-day bounds are V2 observed outcomes, not V2 prediction-input coverage (`/dataset/daily-curtailment/coverage`). Later actuals are pending until the archive is refreshed.",
     )
     def actuals_coverage() -> dict[str, Any]:
         try:
-            return observation_service.coverage()
+            actuals = observation_service.coverage()
         except (OSError, ValueError) as error:
             logger.warning("Actuals archive unavailable: %s", type(error).__name__)
             raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
+        v1 = prediction_service.dataset_info()
+        return {
+            **actuals,
+            "coverage_kind": "observed_outcomes_archive",
+            "coverage_notice": (
+                "Top-level dates are observed-outcome archive coverage, not V1 prediction-input coverage. "
+                "Use v1_prediction_dataset or /dataset/info for V1 30/60-minute issue times."
+            ),
+            "v1_prediction_dataset": {
+                "available_issue_timestamp_min_utc": v1["available_issue_timestamp_min_utc"],
+                "available_issue_timestamp_max_utc": v1["available_issue_timestamp_max_utc"],
+                "available_issue_timestamp_count": v1["available_issue_timestamp_count"],
+                "supported_forecast_horizons_minutes": v1["supported_forecast_horizons_minutes"],
+                "coverage_endpoint": "/dataset/info",
+            },
+        }
 
     @app.get(
         "/actuals/v1",
@@ -664,6 +744,50 @@ def create_app(
             raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
         return {"count": len(rows), "actuals": rows}
 
+    @app.post(
+        "/actuals/v1/window",
+        response_model=V1ActualsWindowResponse,
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_ACTUALS],
+        summary="V1 actuals: retrieve up to 24.5 hours of target half-hours",
+        description=(
+            "Body: `start_target_timestamp_utc` from the **first prediction's target**, plus "
+            "`duration_hours` of 0.5–24.5 in half-hour steps. Returns 1–49 ordered EirGrid actuals "
+            "without sending every target timestamp separately. Unlike `/predict/window/from-dataset`, "
+            "the start is a **target**, not an issue time; no forecast horizon or model input is needed. "
+            "A full 24-hour V1 issue window with both 30/60-minute horizons needs 24.5 hours "
+            "here to cover all distinct target half-hours. "
+            "The archive may cover dates outside the V1 model-ready dataset. Each item reports "
+            "`available`, `pending` or `missing`; unavailable MWh fields remain null."
+        ),
+    )
+    def point_actual_window(request: V1ActualsWindowRequest) -> dict[str, Any]:
+        start = request.start_target_timestamp_utc
+        steps = int(round(request.duration_hours * 2))
+        try:
+            targets = [start + timedelta(minutes=30 * index) for index in range(steps)]
+            end_exclusive = start + timedelta(hours=request.duration_hours)
+        except OverflowError as error:
+            raise HTTPException(status_code=422, detail="Target window exceeds supported UTC dates") from error
+        try:
+            rows = observation_service.points(targets)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except OSError as error:
+            logger.warning("Actuals archive unavailable: %s", type(error).__name__)
+            raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
+        return {
+            "semantics": "observed_half_hour_target_window",
+            "start_target_timestamp_utc": start.isoformat(),
+            "end_target_timestamp_exclusive_utc": end_exclusive.isoformat(),
+            "duration_hours": request.duration_hours,
+            "interval_minutes": 30,
+            "actual_count": len(rows),
+            "status_counts": {status: sum(row["status"] == status for row in rows) for status in ("available", "pending", "missing")},
+            "actuals": rows,
+            "notice": "EirGrid observed outcomes only; archive coverage is not V1 prediction-input coverage.",
+        }
+
     @app.get(
         "/actuals/daily-curtailment",
         response_model=DailyActualResponse,
@@ -685,6 +809,45 @@ def create_app(
         except OSError as error:
             logger.warning("Actuals archive unavailable: %s", type(error).__name__)
             raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
+
+    @app.post(
+        "/actuals/daily-curtailment/window",
+        response_model=DailyActualsWindowResponse,
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_ACTUALS],
+        summary="V2 actuals: retrieve 1–7 consecutive complete UTC days",
+        description=(
+            "Body: `start_date_utc` and `days`, matching `/predict/curtailment/window`. "
+            "Returns an ordered array of separately observed EirGrid daily curtailment totals. "
+            "Use `target_date_utc` from `/predict/curtailment/from-raw` with the existing "
+            "single-day `/actuals/daily-curtailment` route; the 96 forecast inputs cannot "
+            "produce an actual outcome. Days without all 48 valid half-hour labels are "
+            "`pending` or `missing` with null MWh, never an invented zero. This route "
+            "does not require the experimental V2 model to be loaded."
+        ),
+    )
+    def daily_actual_window(request: DailyActualsWindowRequest) -> dict[str, Any]:
+        try:
+            dates = [request.start_date_utc + timedelta(days=index) for index in range(request.days)]
+            end_exclusive = request.start_date_utc + timedelta(days=request.days)
+        except OverflowError as error:
+            raise HTTPException(status_code=422, detail="Day window exceeds supported UTC dates") from error
+        try:
+            rows = [observation_service.day(target_date) for target_date in dates]
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except OSError as error:
+            logger.warning("Actuals archive unavailable: %s", type(error).__name__)
+            raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
+        return {
+            "semantics": "observed_complete_day_window",
+            "start_date_utc": request.start_date_utc.isoformat(),
+            "end_date_exclusive_utc": end_exclusive.isoformat(),
+            "actual_count": len(rows),
+            "status_counts": {status: sum(row["status"] == status for row in rows) for status in ("available", "pending", "missing")},
+            "actuals": rows,
+            "notice": "EirGrid observed complete-day curtailment only; not V2 model predictions.",
+        }
 
     @app.get(
         "/model-info/daily-curtailment", dependencies=[Depends(require_api_key)], tags=[TAG_V2],
@@ -1020,6 +1183,12 @@ def create_app(
         v2_window = v2_dataset_window_example(optional_daily_service.dataset if optional_daily_service is not None else None)
         if v2_window is not None:
             schema["paths"]["/predict/curtailment/window"]["post"]["requestBody"]["content"]["application/json"]["example"] = v2_window
+        schema["paths"]["/actuals/v1/window"]["post"]["requestBody"]["content"]["application/json"]["example"] = {
+            "start_target_timestamp_utc": "2026-01-15T12:30:00Z", "duration_hours": 2,
+        }
+        schema["paths"]["/actuals/daily-curtailment/window"]["post"]["requestBody"]["content"]["application/json"]["example"] = {
+            "start_date_utc": "2026-04-28", "days": 7,
+        }
         return schema
 
     app.openapi = openapi_with_raw_examples

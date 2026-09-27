@@ -100,7 +100,9 @@ class ApiTests(unittest.TestCase):
             "/actuals/coverage": "Observed outcomes",
             "/actuals/v1": "Observed outcomes",
             "/actuals/v1/batch": "Observed outcomes",
+            "/actuals/v1/window": "Observed outcomes",
             "/actuals/daily-curtailment": "Observed outcomes",
+            "/actuals/daily-curtailment/window": "Observed outcomes",
         }
         self.assertEqual(set(schema["paths"]), set(expected_tags))
         for path, expected_tag in expected_tags.items():
@@ -367,7 +369,22 @@ class ApiTests(unittest.TestCase):
             batch = client.post("/actuals/v1/batch", json={"target_timestamps_utc": ["2026-01-01T00:30:00Z", "2026-01-01T01:00:00Z"]}, headers=headers)
             self.assertEqual(batch.status_code, 200, batch.text)
             self.assertEqual(batch.json()["count"], 2)
-            self.assertEqual(client.get("/actuals/coverage", headers=headers).status_code, 200)
+            coverage_response = client.get("/actuals/coverage", headers=headers)
+            self.assertEqual(coverage_response.status_code, 200)
+            coverage = coverage_response.json()
+            self.assertEqual(coverage["coverage_kind"], "observed_outcomes_archive")
+            self.assertEqual(coverage["available_target_timestamp_min_utc"], "2026-01-01T00:00:00+00:00")
+            v1_dataset = client.get("/dataset/info", headers=headers).json()
+            self.assertEqual(
+                coverage["v1_prediction_dataset"]["available_issue_timestamp_min_utc"],
+                v1_dataset["available_issue_timestamp_min_utc"],
+            )
+            self.assertEqual(
+                coverage["v1_prediction_dataset"]["available_issue_timestamp_max_utc"],
+                v1_dataset["available_issue_timestamp_max_utc"],
+            )
+            self.assertEqual(coverage["v1_prediction_dataset"]["coverage_endpoint"], "/dataset/info")
+            self.assertIn("not V1 prediction-input coverage", coverage["coverage_notice"])
             self.assertEqual(client.get("/actuals/v1", params={"target_timestamp_utc": "2026-01-01T00:30:00"}, headers=headers).status_code, 422)
 
     def test_missing_actuals_archive_does_not_affect_v1(self) -> None:
@@ -378,6 +395,80 @@ class ApiTests(unittest.TestCase):
             response = client.get("/actuals/coverage")
             self.assertEqual(response.status_code, 503)
             self.assertNotIn(str(missing), response.text)
+            v1_window = client.post("/actuals/v1/window", json={
+                "start_target_timestamp_utc": "2026-01-01T00:00:00Z", "duration_hours": 1,
+            })
+            self.assertEqual(v1_window.status_code, 503)
+            self.assertNotIn(str(missing), v1_window.text)
+            v2_window = client.post("/actuals/daily-curtailment/window", json={
+                "start_date_utc": "2026-01-01", "days": 2,
+            })
+            self.assertEqual(v2_window.status_code, 503)
+            self.assertNotIn(str(missing), v2_window.text)
+
+    def test_actual_windows_return_ordered_outcomes_without_model_predictions(self) -> None:
+        class WindowActuals:
+            def point(self, target):
+                status = "available" if target.hour == 0 else "pending"
+                return {
+                    "status": status, "target_timestamp_utc": target.isoformat(),
+                    "source_latest_timestamp_utc": "2026-01-01T00:30:00+00:00",
+                    "actual_dispatch_down_mwh": 3.0 if status == "available" else None,
+                    "actual_curtailment_mwh": 2.0 if status == "available" else None,
+                    "actual_constraint_mwh": 1.0 if status == "available" else None,
+                    "actual_dispatch_down_event": True if status == "available" else None,
+                }
+
+            def points(self, targets):
+                return [self.point(target) for target in targets]
+
+            def day(self, target):
+                status = "available" if target.isoformat() == "2026-01-01" else "pending"
+                return {
+                    "status": status, "target_date_utc": target.isoformat(),
+                    "source_latest_timestamp_utc": "2026-01-01T23:30:00+00:00",
+                    "actual_curtailment_mwh": 96.0 if status == "available" else None,
+                    "actual_curtailment_event": True if status == "available" else None,
+                    "complete_half_hour_count": 48 if status == "available" else 0,
+                }
+
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, api_key="team-secret", actuals_service=WindowActuals())) as client:
+            v1_path = "/actuals/v1/window"
+            v1_body = {"start_target_timestamp_utc": "2026-01-01T00:00:00Z", "duration_hours": 1.5}
+            self.assertEqual(client.post(v1_path, json=v1_body).status_code, 401)
+            headers = {"X-API-Key": "team-secret"}
+            v1 = client.post(v1_path, json=v1_body, headers=headers)
+            self.assertEqual(v1.status_code, 200, v1.text)
+            self.assertEqual(v1.json()["actual_count"], 3)
+            self.assertEqual(v1.json()["status_counts"], {"available": 2, "pending": 1, "missing": 0})
+            self.assertEqual(
+                [row["target_timestamp_utc"] for row in v1.json()["actuals"]],
+                ["2026-01-01T00:00:00+00:00", "2026-01-01T00:30:00+00:00", "2026-01-01T01:00:00+00:00"],
+            )
+            self.assertIsNone(v1.json()["actuals"][-1]["actual_dispatch_down_mwh"])
+            full_span = client.post(v1_path, json={**v1_body, "duration_hours": 24.5}, headers=headers)
+            self.assertEqual(full_span.status_code, 200, full_span.text)
+            self.assertEqual(full_span.json()["actual_count"], 49)
+            self.assertEqual(client.post(v1_path, json={**v1_body, "duration_hours": 25}, headers=headers).status_code, 422)
+            self.assertEqual(client.post(v1_path, json={**v1_body, "start_target_timestamp_utc": "2026-01-01T00:15:00Z"}, headers=headers).status_code, 422)
+            self.assertEqual(client.post(v1_path, json={**v1_body, "start_target_timestamp_utc": "9999-12-31T23:30:00Z"}, headers=headers).status_code, 422)
+
+            v2_path = "/actuals/daily-curtailment/window"
+            v2_body = {"start_date_utc": "2026-01-01", "days": 2}
+            self.assertEqual(client.post(v2_path, json=v2_body).status_code, 401)
+            v2 = client.post(v2_path, json=v2_body, headers=headers)
+            self.assertEqual(v2.status_code, 200, v2.text)
+            self.assertEqual(v2.json()["actual_count"], 2)
+            self.assertEqual(v2.json()["status_counts"], {"available": 1, "pending": 1, "missing": 0})
+            self.assertEqual([row["target_date_utc"] for row in v2.json()["actuals"]], ["2026-01-01", "2026-01-02"])
+            self.assertIsNone(v2.json()["actuals"][-1]["actual_curtailment_mwh"])
+            self.assertEqual(client.post(v2_path, json={**v2_body, "days": 8}, headers=headers).status_code, 422)
+            self.assertEqual(client.post(v2_path, json={**v2_body, "start_date_utc": "9999-12-31"}, headers=headers).status_code, 422)
+
+            schema = client.get("/openapi.json").json()["paths"]
+            self.assertIn(v1_path, schema)
+            self.assertIn(v2_path, schema)
 
     def test_optional_daily_model_does_not_change_v1_when_unconfigured(self) -> None:
         response = self.client.post(

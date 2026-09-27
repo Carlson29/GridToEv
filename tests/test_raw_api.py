@@ -42,6 +42,36 @@ class RawApiTests(unittest.TestCase):
         self.assertEqual(v2["evaluation"]["test"]["daily_mae_mwh"], 1723.390575132749)
         self.assertIn("bundled historical model dataset", v2["evaluation"]["dataset_window_notice"].lower())
 
+    def test_actual_windows_match_bundled_labels_and_raw_example_dates(self):
+        v1 = self.client.post("/actuals/v1/window", json={
+            "start_target_timestamp_utc": "2026-01-15T12:30:00Z", "duration_hours": 2,
+        }, headers=self.headers)
+        self.assertEqual(v1.status_code, 200, v1.text)
+        self.assertEqual(v1.json()["actual_count"], 4)
+        self.assertEqual(v1.json()["status_counts"]["available"], 4)
+        model_rows = pd.read_csv(DEFAULT_DATASET_PATH)
+        matched = model_rows.loc[
+            model_rows["target_timestamp_utc"].eq("2026-01-15T12:30:00Z")
+        ].iloc[0]
+        self.assertAlmostEqual(v1.json()["actuals"][0]["actual_dispatch_down_mwh"], matched["dispatch_down_mwh"])
+
+        v2_body = {"start_date_utc": "2026-04-28", "days": 7}
+        v2 = self.client.post("/actuals/daily-curtailment/window", json=v2_body, headers=self.headers)
+        self.assertEqual(v2.status_code, 200, v2.text)
+        self.assertEqual(v2.json()["actual_count"], 7)
+        self.assertEqual(v2.json()["status_counts"]["available"], 7)
+        daily_rows = pd.read_csv(DEFAULT_DAILY_DATASET)
+        daily_match = daily_rows.loc[
+            daily_rows["issue_timestamp_utc"].str.startswith("2026-04-28")
+        ].iloc[0]
+        self.assertAlmostEqual(v2.json()["actuals"][0]["actual_curtailment_mwh"], daily_match["curtailment_mwh"])
+
+        raw_date = self.client.get("/openapi.json").json()["paths"]["/predict/curtailment/from-raw"]["post"]["requestBody"]["content"]["application/json"]["example"]["target_date_utc"]
+        raw_actual = self.client.get("/actuals/daily-curtailment", params={"target_date_utc": raw_date}, headers=self.headers)
+        self.assertEqual(raw_actual.status_code, 200)
+        self.assertIn(raw_actual.json()["status"], {"missing", "pending"})
+        self.assertIsNone(raw_actual.json()["actual_curtailment_mwh"])
+
     def test_v1_raw_schema_and_prediction_match_historical_replay(self):
         schema = self.client.get("/model-info/v1/raw-input-schema", headers=self.headers)
         self.assertEqual(schema.status_code, 200, schema.text)
