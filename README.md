@@ -162,6 +162,8 @@ when one is configured. The routes have different model targets and input format
 
 `GET /models/catalog` lists both models. The two `/model-info` endpoints expose fitted estimator names and roles, the saved validation/test scores and baselines, test periods, and important serving caveats. They do **not** claim that a test-set metric is the error of the next prediction. See [manual raw-input guidance](docs/SHARING_AND_PREDICTIONS.md#predict-from-original-source-values) before using either raw-input route.
 
+The two raw-input Swagger bodies demonstrate the first target **after** each frozen model dataset: V1 predicts the next unrecorded half-hour using its latest source row; V2 predicts the next unrecorded UTC day using archived day-ahead forecasts. They do not append labels or observations to either dataset and are not current-time forecasts.
+
 V2's historical model-ready dataset ends at 2026-08-30, but the prediction endpoint can request
 later dates if the forecast source has all required inputs. Actuals have a separate, periodically
 refreshed EirGrid archive. See `docs/DAILY_CURTAILMENT_V2.md` and `docs/ACTUALS_API.md`.

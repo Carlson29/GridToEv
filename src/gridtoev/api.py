@@ -46,7 +46,7 @@ Send the shared `X-API-Key` using **Authorize** for protected routes. `GET /heal
 
 `GET /models/catalog` lists the two tasks. Model-info scores are historical evaluations, **not the error of an individual prediction**. Raw-input routes validate shape and claimed availability times but cannot independently verify that caller-supplied values were truly published at those times; they do not fetch a live V1 source feed.
 
-The prefilled **raw-input** request bodies in Swagger are complete **historical examples**, not current forecasts. V1's source values come from the bundled dataset, but its example publication times are illustrative because that dataset does not preserve publication receipts. V2's example uses archived Open-Meteo forecasts for 2024-04-01. Replace values and timestamps with genuinely available inputs for any new prediction. If you do not have all 49 V1 observations or 96 V2 forecasts, use the simpler dataset/weather-backed endpoints instead.
+The prefilled **raw-input** request bodies demonstrate the **next target beyond each model dataset**, without adding that target or its outcome to the dataset. V1 uses the latest bundled source row to predict the next unrecorded half-hour; its example publication times are illustrative because the dataset does not preserve release receipts. V2 uses archived Open-Meteo day-ahead forecasts for the first day after its model dataset. These are frozen-dataset demos, **not forecasts for today's clock time**. Replace values and timestamps with genuinely available inputs for any new prediction. If you do not have all 49 V1 observations or 96 V2 forecasts, use the simpler dataset/weather-backed endpoints instead.
 """
 
 OPENAPI_TAGS = [
@@ -602,9 +602,11 @@ def create_app(
                 "A true current-time forecast also requires a current, causally available source feed."
             ),
             "swagger_example_notice": (
-                "The prefilled POST /predict/v1/from-raw body is a complete historical dataset replay. "
-                "Its publication times are illustrative and not verified. Replace them with actual "
-                "source availability times for a new prediction; do not backdate values."
+                "The prefilled POST /predict/v1/from-raw body uses the latest frozen dataset "
+                "observations to predict the first half-hour after the dataset's final labelled "
+                "target. It does not add that target or an outcome to the dataset. Publication "
+                "times are illustrative and not verified; replace them with genuine source "
+                "availability times for a new prediction."
             ),
         }
 
@@ -722,10 +724,11 @@ def create_app(
                 "user-supplied forecast vintages. For future days, longer-lead accuracy is unvalidated."
             ),
             "swagger_example_notice": (
-                "The prefilled POST /predict/curtailment/from-raw body is one archived "
-                "Open-Meteo GFS previous_day1 day (2024-04-01), not a current forecast. "
-                "For a different day, replace all 96 regional hours with genuine forecasts "
-                "and their actual publication times."
+                "The prefilled POST /predict/curtailment/from-raw body uses archived "
+                "Open-Meteo GFS previous_day1 forecasts for the first day after the frozen "
+                "V2 model dataset (2026-08-31). It does not add that day or its outcome to "
+                "the dataset. For a different day, replace all 96 regional hours with "
+                "genuine forecasts and their actual publication times."
             ),
         }
 
@@ -776,8 +779,10 @@ def create_app(
             "The response is one whole-day V2 prediction, NOT an hourly series. Caller-supplied provenance "
             "is unverified, and historical V2 MAE does not validate longer future leads. See "
             "`/model-info/daily-curtailment/raw-input-schema` for region and field guidance. "
-            "The Swagger body is a valid archived 2024-04-01 example, not a live forecast. "
-            "To predict another day, change the date and replace all 96 forecast rows."
+            "The Swagger body demonstrates the next unrecorded V2 model-dataset day, "
+            "2026-08-31, using its archived day-ahead forecasts. This is not a forecast "
+            "for today's clock time and no outcome is added to the dataset. To predict "
+            "another day, change the date and replace all 96 forecast rows."
         ),
     )
     def predict_daily_curtailment_from_raw(request: V2RawPredictionRequest) -> dict[str, Any]:
@@ -903,10 +908,12 @@ def create_app(
             "The API deterministically creates the V1 model's 119 features and predicts the target "
             "half-hour. This is not a live collector and cannot verify the caller's publication timestamps. "
             "See `/model-info/v1/raw-input-schema` for plain-language fields and units. "
-            "The Swagger body is a valid historical replay example, not a live forecast; its "
-            "availability times illustrate the format and are not independently verified. "
-            "For a new issue time, replace the current values and every history row with "
-            "real values known by that issue time. Do not backdate availability timestamps."
+            "The Swagger body uses the latest frozen dataset input row at 2026-01-31 "
+            "22:30 UTC to predict the next unrecorded target at 23:30 UTC with the "
+            "60-minute horizon. No outcome is added to the dataset. This is not a "
+            "live current-time forecast; example publication times are illustrative "
+            "and unverified. For a new issue time, replace the current values and "
+            "every history row with real values known then. Do not backdate availability."
         ),
     )
     def predict_v1_from_raw(request: V1RawPredictionRequest) -> dict[str, Any]:
@@ -1011,7 +1018,10 @@ def create_app(
         v1_example = v1_raw_example(prediction_service.dataset, prediction_service.dataset_path)
         if v1_example is not None:
             schema["paths"]["/predict/v1/from-raw"]["post"]["requestBody"]["content"]["application/json"]["example"] = v1_example
-        schema["paths"]["/predict/curtailment/from-raw"]["post"]["requestBody"]["content"]["application/json"]["example"] = v2_raw_example()
+        daily_report_path = optional_daily_service.report_path if optional_daily_service is not None else DEFAULT_REPORT
+        v2_example = v2_raw_example(daily_report_path)
+        if v2_example is not None:
+            schema["paths"]["/predict/curtailment/from-raw"]["post"]["requestBody"]["content"]["application/json"]["example"] = v2_example
         return schema
 
     app.openapi = openapi_with_raw_examples

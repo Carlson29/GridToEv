@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -6,8 +7,8 @@ from fastapi.testclient import TestClient
 
 from gridtoev.api import create_app
 from gridtoev.constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
-from gridtoev.daily_curtailment import REGIONS
-from gridtoev.daily_model import DailyCurtailmentService
+from gridtoev.daily_curtailment import DEFAULT_DAILY_DATASET, REGIONS
+from gridtoev.daily_model import DEFAULT_REPORT, DailyCurtailmentService
 from gridtoev.inference import PredictionService
 from gridtoev.release_guard import DEFAULT_REPORT_PATH
 from tests.test_raw_prediction import historical_v1_raw_request
@@ -100,6 +101,16 @@ class RawApiTests(unittest.TestCase):
     def test_swagger_raw_request_examples_are_complete_and_accepted(self):
         openapi = self.client.get("/openapi.json").json()
         v1_example = openapi["paths"]["/predict/v1/from-raw"]["post"]["requestBody"]["content"]["application/json"]["example"]
+        v1_dataset = pd.read_csv(DEFAULT_DATASET_PATH, usecols=["issue_timestamp_utc", "target_timestamp_utc"])
+        last_v1_issue = pd.to_datetime(v1_dataset["issue_timestamp_utc"], utc=True).max()
+        last_v1_target = pd.to_datetime(v1_dataset["target_timestamp_utc"], utc=True).max()
+        expected_next_v1_target = last_v1_target + pd.Timedelta(minutes=30)
+        self.assertEqual(pd.Timestamp(v1_example["issue_timestamp_utc"]), last_v1_issue)
+        self.assertEqual(
+            pd.Timestamp(v1_example["issue_timestamp_utc"]) + pd.Timedelta(minutes=v1_example["forecast_horizon_minutes"]),
+            expected_next_v1_target,
+        )
+        self.assertEqual(v1_example["forecast_horizon_minutes"], 60)
         self.assertEqual(len(v1_example["history"]), 48)
         self.assertLessEqual(
             pd.Timestamp(v1_example["current_observation"]["available_at_utc"]),
@@ -107,12 +118,23 @@ class RawApiTests(unittest.TestCase):
         )
         v1_response = self.client.post("/predict/v1/from-raw", json=v1_example, headers=self.headers)
         self.assertEqual(v1_response.status_code, 200, v1_response.text)
+        self.assertEqual(pd.Timestamp(v1_response.json()["target_timestamp_utc"]), expected_next_v1_target)
 
         v2_example = openapi["paths"]["/predict/curtailment/from-raw"]["post"]["requestBody"]["content"]["application/json"]["example"]
+        report = json.loads(DEFAULT_REPORT.read_text(encoding="utf-8"))
+        last_v2_date = max(pd.Timestamp(bounds[1]).date() for bounds in report["date_ranges"].values())
+        expected_next_v2_date = last_v2_date + timedelta(days=1)
+        v2_dataset_dates = pd.read_csv(DEFAULT_DAILY_DATASET, usecols=["issue_timestamp_utc"])["issue_timestamp_utc"]
+        self.assertEqual(v2_example["target_date_utc"], expected_next_v2_date.isoformat())
+        self.assertNotIn(v2_example["target_date_utc"], set(pd.to_datetime(v2_dataset_dates, utc=True).dt.date.astype(str)))
         self.assertEqual(len(v2_example["hourly_forecasts"]), 96)
+        self.assertEqual(v2_example["hourly_forecasts"][0]["wind_speed_100m_kmh"], 38.7)
         self.assertEqual(len({(row["region"], row["target_hour_utc"]) for row in v2_example["hourly_forecasts"]}), 96)
         v2_response = self.client.post("/predict/curtailment/from-raw", json=v2_example, headers=self.headers)
         self.assertEqual(v2_response.status_code, 200, v2_response.text)
+        self.assertEqual(v2_response.json()["target_date_utc"], expected_next_v2_date.isoformat())
+        self.assertIn("next", openapi["paths"]["/predict/v1/from-raw"]["post"]["description"].lower())
+        self.assertIn("next", openapi["paths"]["/predict/curtailment/from-raw"]["post"]["description"].lower())
 
     def test_v1_unavailable_current_value_error_explains_the_two_times(self):
         expected, current, history = historical_v1_raw_request()
