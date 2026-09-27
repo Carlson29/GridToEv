@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import joblib
@@ -19,6 +19,7 @@ from .daily_curtailment import (
     FORECAST_MODEL,
     REGIONS,
     build_forecast_features,
+    fetch_live_forecast,
     fetch_previous_runs,
 )
 
@@ -256,6 +257,7 @@ class DailyCurtailmentService:
             self.load()
         assert self.bundle is not None
         report = json.loads(self.report_path.read_text(encoding="utf-8"))
+        today = datetime.now(timezone.utc).date()
         partitions = {
             split: {
                 "first_target_date_utc": date.fromisoformat(report["date_ranges"][split][0][:10]).isoformat(),
@@ -272,7 +274,10 @@ class DailyCurtailmentService:
             "partitions": partitions,
             "fitted_through_date_utc": self.bundle["metadata"]["trained_through_utc"][:10],
             "requestable_date_min_utc": EARLIEST_TARGET_DATE.isoformat(),
-            "requestable_date_max_utc": datetime.now(timezone.utc).date().isoformat(),
+            "requestable_date_max_utc": today.isoformat(),
+            "forward_window_date_min_utc": (today + timedelta(days=1)).isoformat(),
+            "forward_window_date_max_utc": (today + timedelta(days=7)).isoformat(),
+            "maximum_forward_window_days": 7,
             "date_format": "YYYY-MM-DD",
             "timezone": "UTC",
             "dataset_sha256": report["dataset_sha256"],
@@ -285,15 +290,18 @@ class DailyCurtailmentService:
             ),
         }
 
-    def predict_features(self, features: pd.DataFrame) -> dict:
+    def predict_features(
+        self, features: pd.DataFrame, *, issued_at_utc: datetime | None = None,
+    ) -> dict:
         if self.bundle is None:
             self.load()
         assert self.bundle is not None
         if len(features) != 1:
             raise ValueError("Exactly one daily forecast row required")
-        issue = pd.Timestamp(features.iloc[0]["issue_timestamp_utc"])
+        target_day = pd.Timestamp(features.iloc[0]["issue_timestamp_utc"])
+        issue = pd.Timestamp(issued_at_utc) if issued_at_utc is not None else target_day
         available = pd.Timestamp(features.iloc[0]["forecast_max_available_at_utc"])
-        if issue.tzinfo is None or available.tzinfo is None or available > issue:
+        if target_day.tzinfo is None or issue.tzinfo is None or available.tzinfo is None or available > issue:
             raise ValueError("Forecast vintage is not available at issue time")
         columns = self.bundle["metadata"]["feature_columns"]
         if set(columns) - set(features):
@@ -308,7 +316,7 @@ class DailyCurtailmentService:
         return {
             "model_version": self.bundle["metadata"]["model_version"],
             "experimental": True,
-            "target_date_utc": issue.date().isoformat(),
+            "target_date_utc": target_day.date().isoformat(),
             "issue_timestamp_utc": issue.isoformat(),
             "forecast_max_available_at_utc": available.isoformat(),
             "curtailment_event_probability": probability,
@@ -329,3 +337,58 @@ class DailyCurtailmentService:
         if len(features) != 1:
             raise ValueError("The archived forecast has missing hours or unavailable inputs for this day")
         return self.predict_features(features)
+
+    def predict_forward_window(self, start_date: date, days: int = 7) -> dict:
+        """Score complete future UTC days from live, uncached weather forecasts.
+
+        The existing V2 bundle is reused without retraining. Its test metrics
+        describe fixed 24-hour-lead archive fields, not these longer leads.
+        """
+
+        today = datetime.now(timezone.utc).date()
+        if start_date <= today:
+            raise ValueError("start_date_utc must be tomorrow UTC or later for complete future days")
+        if days < 1 or days > 7:
+            raise ValueError("days must be between 1 and 7")
+        end_date = start_date + timedelta(days=days - 1)
+        if end_date > today + timedelta(days=7):
+            raise ValueError("The last target day must be within the next seven UTC days")
+
+        forecasts = pd.concat(
+            [fetch_live_forecast(region, start_date, end_date) for region in REGIONS],
+            ignore_index=True,
+        )
+        issued_at = datetime.now(timezone.utc)
+        if start_date <= issued_at.date():
+            raise ValueError("start_date_utc is no longer a future UTC day; retry with tomorrow UTC")
+        try:
+            features = build_forecast_features(forecasts)
+        except ValueError as error:
+            raise OSError("Live forecast inputs are malformed or incomplete") from error
+        expected = [start_date + timedelta(days=offset) for offset in range(days)]
+        actual = [] if features.empty else list(pd.to_datetime(features["issue_timestamp_utc"], utc=True).dt.date)
+        if actual != expected:
+            raise OSError("Live forecast lacks complete hourly weather inputs for every requested UTC day")
+
+        predictions = []
+        for _, row in features.iterrows():
+            prediction = self.predict_features(row.to_frame().T, issued_at_utc=issued_at)
+            target_start = datetime.combine(date.fromisoformat(prediction["target_date_utc"]), datetime.min.time(), tzinfo=timezone.utc)
+            prediction["forecast_lead_hours"] = round((target_start - issued_at).total_seconds() / 3600, 2)
+            predictions.append(prediction)
+        return {
+            "model_version": predictions[0]["model_version"],
+            "semantics": "live_forward_daily_curtailment",
+            "experimental": True,
+            "notice": (
+                "These live GFS forecasts are available at request time, but V2 was trained and "
+                "tested on fixed 24-hour-lead archived weather. Accuracy at multi-day leads is "
+                "not validated; do not use as a dispatch instruction."
+            ),
+            "forecast_source": f"Open-Meteo live {FORECAST_MODEL}",
+            "issued_at_utc": issued_at.isoformat(),
+            "start_date_utc": start_date.isoformat(),
+            "end_date_utc": end_date.isoformat(),
+            "prediction_count": len(predictions),
+            "predictions": predictions,
+        }

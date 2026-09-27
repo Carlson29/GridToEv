@@ -33,9 +33,9 @@ API_DESCRIPTION = """## Choose the right model
 | Model | Predicts | Input | Start here |
 | --- | --- | --- | --- |
 | **V1: 30/60-minute** | Renewable **dispatch-down** risk and MWh at one target half-hour, 30 or 60 minutes after an issue time. | A historical dataset issue timestamp and horizon, or a complete live feature snapshot. | `GET /dataset/info` for valid historical dates; `POST /predict/from-dataset` for a simple example. |
-| **V2: daily curtailment (experimental)** | Whether **curtailment** occurs and total curtailment MWh over one UTC calendar day. This is a different target and time scale from v1. | One UTC target date (`YYYY-MM-DD`), no feature values required. | `GET /dataset/daily-curtailment/coverage`, then `POST /predict/curtailment/day`. |
+| **V2: daily curtailment (experimental)** | Whether **curtailment** occurs and total curtailment MWh over a full UTC calendar day. This is a different target and time scale from v1. | One historical/current UTC date, or a future start date and 1–7 complete days. | `POST /predict/curtailment/day` for archived inputs; `POST /predict/curtailment/window` for live future weather. |
 
-V1's dataset replay endpoints use a **fixed historical dataset**. In particular, `/predict/latest` means the latest *dataset row*, **not the current time**. A v1 window is repeated 30/60-minute predictions, **not a day-ahead forecast**. V2 fetches archived day-ahead weather inputs for the selected date; dates through the current UTC day can be requested, but source coverage is not guaranteed. The version shown in the Swagger header does not choose a model; each prediction reports its own `model_version`.
+V1's dataset replay endpoints use a **fixed historical dataset**. In particular, `/predict/latest` means the latest *dataset row*, **not the current time**. A V1 window is repeated 30/60-minute predictions for at most 24 historical hours, **not a day-ahead forecast**. V2's `/day` route fetches archived 24-hour-lead weather for dates through today UTC. Its `/window` route fetches **live GFS forecasts** for tomorrow through seven days ahead and returns one prediction per full UTC day. Multi-day lead accuracy has **not been validated** against the historical V2 test metric. The version shown in the Swagger header does not choose a model; each prediction reports its own `model_version`.
 
 Send the shared `X-API-Key` using **Authorize** for protected routes. `GET /health` is public and shows whether optional v2 loaded. To compare a prediction with reality, copy `target_timestamp_utc` from v1 to `/actuals/v1`, or `target_date_utc` from v2 to `/actuals/daily-curtailment`. Actuals come from a separately refreshed EirGrid snapshot and may be `pending` or `missing`.
 """
@@ -89,10 +89,10 @@ class DatasetWindowPredictionRequest(BaseModel):
     duration_hours: float = Field(
         default=2.0,
         ge=0.5,
-        le=48,
+        le=24,
         multiple_of=0.5,
-        description="Window length from 0.5 to 48 hours, in half-hour increments.",
-        examples=[2, 24, 48],
+        description="Window length from 0.5 to 24 hours, in half-hour increments.",
+        examples=[2, 24],
     )
     forecast_horizons_minutes: list[ForecastHorizon] = Field(
         default_factory=lambda: [30, 60],
@@ -155,6 +155,18 @@ class DailyCurtailmentRequest(BaseModel):
     )
 
 
+class ForwardDailyWindowRequest(BaseModel):
+    start_date_utc: date = Field(
+        description="First full future UTC day to predict, YYYY-MM-DD. Earliest: tomorrow UTC; latest: seven days after today UTC. The last requested day must also be within that range.",
+        examples=["2026-09-28"],
+    )
+    days: int = Field(
+        default=7, ge=1, le=7,
+        description="Number of consecutive full UTC days, 1–7. Defaults to 7; the whole window must end no later than seven days after today UTC.",
+        examples=[7],
+    )
+
+
 class DailyCurtailmentResponse(BaseModel):
     model_version: str = Field(description="V2 daily curtailment model version.")
     experimental: bool = Field(description="True: V2 remains experimental and should not be used as a dispatch instruction.")
@@ -164,6 +176,25 @@ class DailyCurtailmentResponse(BaseModel):
     curtailment_event_probability: float = Field(description="Probability that any curtailment occurs during this UTC day, between 0 and 1.")
     predicted_curtailment_mwh: float = Field(description="Estimated total curtailment energy over the full UTC day, MWh; not an hourly series.")
     target: str = Field(description="Plain-language definition of the V2 prediction target.")
+
+
+class ForwardDailyPredictionResponse(DailyCurtailmentResponse):
+    issue_timestamp_utc: str = Field(description="Actual UTC request time after all live forecasts were retrieved; distinct from the target day's midnight.")
+    forecast_max_available_at_utc: str = Field(description="Latest actual UTC retrieval timestamp among the four live regional weather forecasts; never after issue_timestamp_utc.")
+    forecast_lead_hours: float = Field(description="Hours from request issue time to the target day's 00:00 UTC, not a validated model training lead.")
+
+
+class ForwardDailyWindowResponse(BaseModel):
+    model_version: str = Field(description="Experimental V2 daily curtailment model version, not V1.")
+    semantics: Literal["live_forward_daily_curtailment"]
+    experimental: Literal[True]
+    notice: str = Field(description="Warning that multi-day forecast-lead accuracy has not been validated.")
+    forecast_source: str = Field(description="Uncached live Open-Meteo GFS weather forecast; no future observed weather or EirGrid outcomes are used.")
+    issued_at_utc: str = Field(description="UTC issue time after all regional live forecasts were retrieved.")
+    start_date_utc: str = Field(description="First predicted full UTC calendar day.")
+    end_date_utc: str = Field(description="Last predicted full UTC calendar day, inclusive.")
+    prediction_count: int = Field(description="Number of daily predictions in the ordered array; equals days.")
+    predictions: list[ForwardDailyPredictionResponse] = Field(description="One experimental probability and full-day MWh estimate per requested future UTC day. Use target_date_utc with /actuals/daily-curtailment once observations arrive.")
 
 
 class HealthResponse(BaseModel):
@@ -188,6 +219,9 @@ class DailyDatasetCoverageResponse(BaseModel):
     fitted_through_date_utc: date = Field(description="Last UTC day whose label was used to fit the deployed model.")
     requestable_date_min_utc: date = Field(description="Earliest date supported by the archived forecast-source convention.")
     requestable_date_max_utc: date = Field(description="Current UTC day; future days cannot be requested.")
+    forward_window_date_min_utc: date = Field(description="Tomorrow UTC: earliest complete day requestable from the live V2 window route.")
+    forward_window_date_max_utc: date = Field(description="Today UTC plus seven days: latest live V2 window target day.")
+    maximum_forward_window_days: Literal[7] = Field(description="Maximum number of consecutive full future UTC days in one V2 window request.")
     date_format: Literal["YYYY-MM-DD"]
     timezone: Literal["UTC"]
     dataset_sha256: str = Field(description="Checksum of the frozen historical V2 modelling dataset.")
@@ -506,7 +540,7 @@ def create_app(
         dependencies=[Depends(require_api_key)],
         tags=[TAG_V2],
         summary="V2 daily dataset dates, split counts and requestable date range",
-        description="No input. Shows the fixed historical train/validation/test coverage used to build and evaluate V2, plus the separate range of UTC dates accepted by the prediction endpoint. Later requestable dates are **not** additional trained rows; an Open-Meteo forecast can still be missing. For observed-outcome coverage use `/actuals/coverage`. Returns 503 when V2 is not loaded.",
+        description="No input. Shows the fixed historical train/validation/test coverage used to build and evaluate V2, the archived `/predict/curtailment/day` request range, and tomorrow-through-seven-days-ahead limits for the live `/predict/curtailment/window` route. Future dates are **not** additional trained rows and source weather may be missing. For observed-outcome coverage use `/actuals/coverage`. Returns 503 when V2 is not loaded.",
     )
     def daily_dataset_coverage() -> dict[str, Any]:
         available_service = app.state.daily_curtailment_service
@@ -533,13 +567,42 @@ def create_app(
         except (OSError, TimeoutError) as error:
             raise HTTPException(status_code=503, detail=f"Forecast source unavailable: {error}") from error
 
+    @app.post(
+        "/predict/curtailment/window",
+        response_model=ForwardDailyWindowResponse,
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_V2],
+        summary="V2: predict curtailment for 1–7 complete future UTC days",
+        description=(
+            'Body: `{"start_date_utc":"YYYY-MM-DD","days":7}`. Start no earlier than **tomorrow UTC**; '
+            "the final day must be no later than **today UTC + 7 days**. Returns an ordered array "
+            "with one V2 curtailment-event probability and total-MWh estimate per complete UTC day. "
+            "This uses uncached live GFS weather from the request time, not the historical V2 dataset, "
+            "future observations or V1's 30/60-minute model. The trained V2 model saw fixed 24-hour-lead "
+            "weather; accuracy for longer forecast leads has **not been validated**. A bad date or length "
+            "returns 422; unavailable or incomplete live forecasts, or an unloaded V2 model, return 503. "
+            "Check each `target_date_utc` later at `/actuals/daily-curtailment`."
+        ),
+    )
+    def predict_daily_curtailment_window(request: ForwardDailyWindowRequest) -> dict[str, Any]:
+        available_service = app.state.daily_curtailment_service
+        if available_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
+        try:
+            return available_service.predict_forward_window(request.start_date_utc, request.days)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except (OSError, TimeoutError) as error:
+            logger.warning("Live daily forecast unavailable: %s", type(error).__name__)
+            raise HTTPException(status_code=503, detail="Live weather forecast unavailable or incomplete") from error
+
     @app.get(
         "/dataset/info",
         response_model=DatasetInfoResponse,
         dependencies=[Depends(require_api_key)],
         tags=[TAG_V1],
         summary="V1 historical dataset coverage and valid UTC issue-time format",
-        description="No input. Returns the loaded **V1** half-hour issue-time range, count, timestamp format, supported 30/60-minute horizons and 48-hour replay limit. These are historical rows, not current live forecasts. For daily V2 coverage use `/dataset/daily-curtailment/coverage`.",
+        description="No input. Returns the loaded **V1** half-hour issue-time range, count, timestamp format, supported 30/60-minute horizons and 24-hour replay limit. These are historical rows, not current live forecasts. For daily V2 coverage use `/dataset/daily-curtailment/coverage`.",
     )
     def dataset_info() -> dict[str, Any]:
         return prediction_service.dataset_info()
@@ -587,7 +650,7 @@ def create_app(
         tags=[TAG_V1],
         summary="V1: replay 30/60-minute predictions across a historical window",
         description=(
-            "Body: a valid historical `start_timestamp_utc`, `duration_hours` from 0.5 to 48 "
+            "Body: a valid historical `start_timestamp_utc`, `duration_hours` from 0.5 to 24 "
             "in 0.5-hour steps, optional 30/60-minute horizons and capacity. Returns an ordered "
             "array of V1 predictions at successive dataset half-hours, with a summary per horizon. "
             "It is **not a day-ahead** or single 2-hour forecast; every array item is still 30 or 60 minutes ahead of its own issue time."

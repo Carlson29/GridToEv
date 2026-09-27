@@ -158,7 +158,7 @@ class PredictionService:
             "interval_minutes": 30,
             "required_minute_values": [0, 30],
             "supported_forecast_horizons_minutes": list(SUPPORTED_FORECAST_HORIZONS),
-            "maximum_window_hours": 48.0,
+            "maximum_window_hours": 24.0,
             "window_semantics": "historical_rolling_short_horizon",
             "window_notice": (
                 "A window replays 30/60-minute forecasts at each historical half-hour. "
@@ -367,8 +367,8 @@ class PredictionService:
         """Replay short-horizon predictions over a historical half-hour window."""
         if self.dataset is None:
             raise RuntimeError("No modelling dataset is loaded")
-        if duration_hours < 0.5 or duration_hours > 48:
-            raise FeatureValidationError("duration_hours must be between 0.5 and 48")
+        if duration_hours < 0.5 or duration_hours > 24:
+            raise FeatureValidationError("duration_hours must be between 0.5 and 24")
         steps_float = duration_hours * 2
         if not np.isclose(steps_float, round(steps_float)):
             raise FeatureValidationError("duration_hours must be in 0.5-hour increments")
