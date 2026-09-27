@@ -117,8 +117,17 @@ def build_v1_features_from_raw(
         raise ValueError("forecast_horizon_minutes must be 30 or 60")
     if len(history) != V1_HISTORY_STEPS:
         raise ValueError("Exactly 48 consecutive prior half-hour observations are required")
-    if _utc_timestamp(current.get("available_at_utc"), "current.available_at_utc") > issue:
-        raise ValueError("Current raw values were not available at issue time")
+    current_available_at = _utc_timestamp(
+        current.get("available_at_utc"), "current_observation.available_at_utc",
+    )
+    if current_available_at > issue:
+        raise ValueError(
+            "current_observation.available_at_utc "
+            f"({current_available_at.isoformat()}) is later than issue_timestamp_utc "
+            f"({issue.isoformat()}). Only use values genuinely published by the issue time. "
+            "Choose a real later issue time or earlier available values. Do not backdate "
+            "availability timestamps."
+        )
 
     required_current = set(V1_RAW_CURRENT_FIELDS) | {"observed_dispatch_down_mwh", "available_at_utc"}
     if required_current - set(current):

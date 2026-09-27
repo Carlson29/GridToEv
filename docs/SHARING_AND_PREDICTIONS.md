@@ -133,6 +133,19 @@ instruction.
 
 ## Predict from original source values
 
+Both `/predict/v1/from-raw` and `/predict/curtailment/from-raw` are **POST**
+routes: opening their URLs in a browser sends GET and does not make a
+prediction. In `/docs`, select **Authorize**, enter `X-API-Key`, expand the
+POST route, click **Try it out**, edit the JSON body, then click **Execute**.
+Swagger now prefills each route with a complete, accepted **historical example**
+instead of invented zeroes, current timestamps and repeated hours. Those
+examples demonstrate a valid request shape; they are not live forecasts.
+V1's example source values are from the bundled model dataset, but the example
+publication times are illustrative because per-source release receipts were
+not preserved. V2's example contains archived Open-Meteo GFS day-ahead
+forecasts for 2024-04-01. Always replace the example values and dates when
+asking a new question.
+
 Start with `GET /models/catalog`, then inspect `GET /model-info` (V1) or
 `GET /model-info/daily-curtailment` (V2). These now show each fitted estimator's
 name and job, the held-out scores that were actually recorded, baselines, test
@@ -167,6 +180,14 @@ actually published by their claimed issue time; the API cannot authenticate
 user-supplied provenance. The latest observed dispatch-down is a past input,
 **not** the future value being predicted. If it is unavailable, this frozen
 V1 model cannot be faithfully run from raw values without a different model.
+`issue_timestamp_utc` is when the prediction is supposedly made;
+`current_observation.available_at_utc` is when the **last required current
+input actually became available**. If the latter is later, the response is
+422: the model cannot use tomorrow's publication to make yesterday's
+prediction. Do not simply type an earlier publication time to silence this
+error. Use genuinely earlier data or a real later issue time. If you only want
+a historical V1 example and lack the raw source history, use
+`POST /predict/from-dataset` instead.
 
 For a manual V2 prediction, inspect
 `GET /model-info/daily-curtailment/raw-input-schema`, then send
@@ -182,6 +203,9 @@ seven UTC days and use the actual request time as issue time. Multi-day lead
 accuracy is unvalidated. For either raw route, `input_provenance` says
 `user_supplied_unverified`: shape/timing checks do not prove the forecast or
 source publication was genuine.
+If you lack 96 source forecasts, `POST /predict/curtailment/day` fetches an
+archived daily forecast for one historical/current UTC day, while
+`POST /predict/curtailment/window` fetches live weather for 1–7 future days.
 
 ### Predict the next seven full UTC days with V2
 
