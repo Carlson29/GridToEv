@@ -80,6 +80,45 @@ def v1_raw_example(dataset: pd.DataFrame | None, dataset_path: Path | None) -> d
     }
 
 
+def v1_dataset_window_example(dataset: pd.DataFrame | None, dataset_path: Path | None) -> dict | None:
+    """Find the latest complete historical 24-hour replay for both V1 horizons."""
+
+    if dataset is None:
+        if dataset_path is None or not dataset_path.is_file():
+            return None
+        dataset = pd.read_csv(dataset_path, usecols=["issue_timestamp_utc", "forecast_horizon_minutes"])
+    if not {"issue_timestamp_utc", "forecast_horizon_minutes"}.issubset(dataset.columns):
+        return None
+    issue_times = pd.to_datetime(dataset["issue_timestamp_utc"], utc=True)
+    common = set(issue_times.loc[dataset["forecast_horizon_minutes"].eq(30)]) & set(
+        issue_times.loc[dataset["forecast_horizon_minutes"].eq(60)]
+    )
+    for end in sorted(common, reverse=True):
+        start = end - pd.Timedelta(hours=23, minutes=30)
+        if all(timestamp in common for timestamp in pd.date_range(start, periods=48, freq="30min")):
+            return {
+                "start_timestamp_utc": _utc_iso(start),
+                "duration_hours": 24,
+                "forecast_horizons_minutes": [30, 60],
+                "flexible_load_capacity_mw": 100,
+            }
+    return None
+
+
+def v2_dataset_window_example(dataset: pd.DataFrame | None) -> dict | None:
+    """Use the user's April example when all seven V2 dataset days exist."""
+
+    if dataset is None or "issue_timestamp_utc" not in dataset:
+        return None
+    available = set(pd.to_datetime(dataset["issue_timestamp_utc"], utc=True).dt.date)
+    preferred = date(2026, 4, 28)
+    candidates = [preferred, *sorted(available, reverse=True)]
+    for start in candidates:
+        if all(start + timedelta(days=offset) in available for offset in range(7)):
+            return {"start_date_utc": start.isoformat(), "days": 7}
+    return None
+
+
 # https://previous-runs-api.open-meteo.com/v1/forecast
 # Open-Meteo Previous Runs API, gfs_global, 2026-08-31, timezone=UTC,
 # wind_speed_unit=kmh, coordinates from daily_curtailment.REGIONS.
