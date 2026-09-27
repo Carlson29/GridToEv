@@ -137,14 +137,22 @@ Both `/predict/v1/from-raw` and `/predict/curtailment/from-raw` are **POST**
 routes: opening their URLs in a browser sends GET and does not make a
 prediction. In `/docs`, select **Authorize**, enter `X-API-Key`, expand the
 POST route, click **Try it out**, edit the JSON body, then click **Execute**.
-Swagger now prefills each route with a complete, accepted **historical example**
-instead of invented zeroes, current timestamps and repeated hours. Those
-examples demonstrate a valid request shape; they are not live forecasts.
-V1's example source values are from the bundled model dataset, but the example
-publication times are illustrative because per-source release receipts were
-not preserved. V2's example contains archived Open-Meteo GFS day-ahead
-forecasts for 2024-04-01. Always replace the example values and dates when
-asking a new question.
+Swagger prefills both routes to predict the **first target after each frozen
+model dataset**, using the latest applicable inputs. The target and its actual
+outcome are **not** inserted into either dataset:
+
+- V1's last dataset issue is `2026-01-31T22:30:00Z` and its last recorded
+  target is `23:00`. The default uses that latest source row, 48 prior
+  half-hours and a **60-minute** horizon to predict `23:30`, the next
+  unrecorded half-hour. Its publication times are illustrative because the
+  dataset did not retain per-source release receipts.
+- V2's model dataset ends `2026-08-30`. The default predicts `2026-08-31`,
+  using 96 archived Open-Meteo GFS day-ahead forecast values for that day.
+  No observed curtailment value is supplied.
+
+These are one-step-out-of-dataset demos, not forecasts for the current clock
+time. Changing only the date while retaining old readings or weather would
+give a misleading prediction; replace the inputs and availability times too.
 
 Start with `GET /models/catalog`, then inspect `GET /model-info` (V1) or
 `GET /model-info/daily-curtailment` (V2). These now show each fitted estimator's

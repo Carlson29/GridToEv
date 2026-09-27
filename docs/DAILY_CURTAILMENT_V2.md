@@ -44,6 +44,10 @@ The new endpoints are:
 `GET /actuals/coverage` describes a **different** EirGrid actual-value snapshot. The V2 coverage
 endpoint describes complete historical model-ready days (2024-04-01 through 2026-08-30, 882 days),
 not when later observed outcomes become available.
+The `/predict/curtailment/from-raw` Swagger default uses archived day-ahead
+forecasts for **2026-08-31**, the first day after that model dataset. It sends
+no observed curtailment and does not append a row to the dataset. It is a
+one-step-out-of-dataset demonstration, not today's live weather forecast.
 
 For example:
 
