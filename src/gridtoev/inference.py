@@ -107,7 +107,8 @@ class PredictionService:
     def model_info(self) -> dict[str, Any]:
         info = dict(self.metadata)
         info.pop("feature_columns", None)
-        columns = list(self._ensure_loaded()["feature_columns"])
+        bundle = self._ensure_loaded()
+        columns = list(bundle["feature_columns"])
         info["feature_contract"] = {
             "feature_count": len(columns),
             "sha256": feature_contract_sha256(columns),
@@ -132,6 +133,107 @@ class PredictionService:
             info["available_issue_timestamp_max_utc"] = self.dataset[
                 "issue_timestamp_utc"
             ].max().isoformat()
+        metrics = bundle["metrics"]
+        classification = metrics["classification"]
+        regression = metrics["regression"]
+        uncertainty = metrics["uncertainty"]
+        def estimator_name(key: str) -> str:
+            estimator = bundle["models"][key]
+            return type(estimator.named_steps["model"]).__name__
+
+        def estimator_parameters(key: str) -> dict[str, Any]:
+            parameters = bundle["models"][key].named_steps["model"].get_params(deep=False)
+            return {
+                name: parameters[name]
+                for name in (
+                    "loss", "quantile", "learning_rate", "max_iter", "max_leaf_nodes",
+                    "min_samples_leaf", "l2_regularization", "random_state",
+                )
+                if name in parameters
+            }
+
+        info["model_id"] = "v1"
+        info["target_description"] = "Dispatch-down event and MWh in a half-hour 30 or 60 minutes after issue"
+        info["metric_guide"] = {
+            "mae_mwh": "Average absolute prediction error per target half-hour, MWh; lower is better.",
+            "rmse_mwh": "Square-root average squared error, MWh; penalizes large misses more; lower is better.",
+            "average_precision": "Event-ranking score across probability thresholds; higher is better and compare with event prevalence.",
+            "f1": "Balance of event precision and recall at the selected classification threshold; higher is better.",
+            "pinball_loss_mwh": "Quantile-forecast error for a stated percentile, MWh; lower is better.",
+            "interval_coverage": "Fraction of target observations inside the P10–P90 prediction interval; compare with intended 80% coverage.",
+        }
+        info["prediction_components"] = {
+            "dispatch_down_serving_policy": {
+                "method": "Horizon-specific trend baseline blended with the fitted ML point regressor",
+                "role": "Final served dispatch-down MWh; at a zero ML weight this is wholly the trend baseline",
+                "trend_alpha_by_horizon": self.metadata["dispatch_trend_alpha_by_horizon"],
+                "ml_weight_by_horizon": self.metadata["dispatch_regression_ml_weight_by_horizon"],
+                "test_metrics": regression["dispatch_down_mwh"],
+            },
+            "event_classifier": {
+                "estimator": estimator_name("event_classifier"),
+                "hyperparameters": estimator_parameters("event_classifier"),
+                "role": "Probability that dispatch-down is positive",
+                "test_metrics": classification["test"],
+            },
+            "dispatch_down_regressor": {
+                "estimator": estimator_name("dispatch_down_regressor"),
+                "hyperparameters": estimator_parameters("dispatch_down_regressor"),
+                "role": "ML forecast of change from the latest observed dispatch-down; its serving blend weight is shown in evaluation",
+                "test_metrics": regression["dispatch_down_ml_only"],
+                "serving_weight_by_horizon": self.metadata["dispatch_regression_ml_weight_by_horizon"],
+            },
+            "curtailment_regressor": {
+                "estimator": estimator_name("curtailment_regressor"),
+                "hyperparameters": estimator_parameters("curtailment_regressor"),
+                "role": "Raw curtailment component; serving output is reconciled to total dispatch-down",
+                "raw_test_metrics": regression["curtailment_mwh"],
+            },
+            "constraint_regressor": {
+                "estimator": estimator_name("constraint_regressor"),
+                "hyperparameters": estimator_parameters("constraint_regressor"),
+                "role": "Raw network-constraint component; serving output is reconciled to total dispatch-down",
+                "raw_test_metrics": regression["constraint_mwh"],
+            },
+            **{
+                f"dispatch_down_quantile_{quantile}": {
+                    "estimator": estimator_name(f"dispatch_down_quantile_{quantile}"),
+                    "hyperparameters": estimator_parameters(f"dispatch_down_quantile_{quantile}"),
+                    "role": f"Uncertainty estimate for dispatch-down {quantile.upper()}; serving bounds are sorted and adjusted",
+                    "test_pinball_loss_mwh": uncertainty[f"{quantile}_pinball_loss"],
+                }
+                for quantile in ("p10", "p50", "p90")
+            },
+        }
+        info["preprocessing"] = "Each V1 estimator uses a fitted median imputer with missing-value indicators before histogram gradient boosting."
+        info["evaluation"] = {
+            "test": {
+                "rows": self.metadata["partitions"]["test"]["rows"],
+                "period_start_utc": self.metadata["partitions"]["test"]["issue_timestamp_min_utc"],
+                "period_end_utc": self.metadata["partitions"]["test"]["issue_timestamp_max_utc"],
+                "dispatch_down_mae_mwh": regression["dispatch_down_mwh"]["mae"],
+                "dispatch_down_rmse_mwh": regression["dispatch_down_mwh"]["rmse"],
+                "dispatch_down_wape": regression["dispatch_down_mwh"]["wape"],
+                "event_average_precision": classification["test"]["average_precision"],
+                "event_f1": classification["test"]["f1"],
+                "interval_coverage_p10_p90": uncertainty["p10_p90_empirical_coverage"],
+            },
+            "validation_event_metrics": classification["validation"],
+            "baselines": {
+                "latest_observation": regression["dispatch_down_latest_observation_baseline"],
+                "stale_persistence": regression["dispatch_down_stale_persistence_baseline"],
+                "trend": regression["dispatch_down_trend_baseline"],
+            },
+            "serving_ml_weight_by_horizon": self.metadata["dispatch_regression_ml_weight_by_horizon"],
+            "caveats": [
+                "The final dispatch-down MWh estimate is a selected trend/ML blend, not the regression model alone.",
+                "The held-out curtailment component has no positive examples, so its low MAE is not evidence of useful positive-day skill.",
+                "These historical half-hour metrics do not measure a live raw-input collector or V2 daily forecasts.",
+                "Caller-supplied publication times are not authenticated; late-published observations can invalidate a live prediction even when a historical row exists.",
+                "The saved estimators were refit on train plus validation after the evaluation fit was scored; these held-out metrics describe the selected procedure, not a fresh score of the exact refitted weights.",
+                "The short January 2026 held-out window is not a purged multi-year live evaluation; the release report keeps a new candidate unapproved.",
+            ],
+        }
         return info
 
     def available_times(self, limit: int = 96) -> list[str]:

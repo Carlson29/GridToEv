@@ -131,6 +131,58 @@ returned `target_date_utc` to `GET /actuals/daily-curtailment`; `GET /actuals/co
 complete UTC days have observed labels. V2 is experimental and should not be used as a dispatch
 instruction.
 
+## Predict from original source values
+
+Start with `GET /models/catalog`, then inspect `GET /model-info` (V1) or
+`GET /model-info/daily-curtailment` (V2). These now show each fitted estimator's
+name and job, the held-out scores that were actually recorded, baselines, test
+periods and limitations. V1 has seven scikit-learn histogram-gradient-boosting
+estimators, but its selected dispatch-down MWh serving blend currently gives
+the ML point regressor weight **zero** at both horizons; the selected trend
+calculation supplies the final amount. V2 has a boosted event classifier and
+an Extra Trees positive-day amount regressor. There is no deployed XGBoost
+model. V1 half-hour dispatch-down MAE and V2 whole-day curtailment MAE are
+different targets and must not be compared numerically.
+
+For a manual V1 prediction, inspect `GET /model-info/v1/raw-input-schema`,
+then send `POST /predict/v1/from-raw` with:
+
+- `issue_timestamp_utc` on a UTC `:00`/`:30` boundary and a 30- or 60-minute horizon;
+- `current_observation`: the source-level ENTSO-E/EirGrid values described by the schema,
+  the **already observed** dispatch-down for the completed issue half-hour, and the
+  latest publication time across those values;
+- `history`: exactly 48 consecutive preceding half-hour source rows, oldest first,
+  containing wind generation, demand, price, SNSP, oversupply and **past** observed
+  dispatch-down plus their timestamps/availability times.
+
+The API calculates sums, headroom, calendar values, lags, ramps and rolling
+statistics itself; do not send engineered columns or the future target. It
+rejects gaps, missing source values, post-issue availability and a half-hour
+price that differs from the preceding hourly value. The trained model's median
+imputer is **not** a substitute for missing raw history: this endpoint requires
+complete source input and sets the source-imputation flags to zero. The frozen
+historical V1 dataset is not a current-time collector. To make a genuinely live
+V1 prediction, callers must obtain current values and history that were
+actually published by their claimed issue time; the API cannot authenticate
+user-supplied provenance. The latest observed dispatch-down is a past input,
+**not** the future value being predicted. If it is unavailable, this frozen
+V1 model cannot be faithfully run from raw values without a different model.
+
+For a manual V2 prediction, inspect
+`GET /model-info/daily-curtailment/raw-input-schema`, then send
+`POST /predict/curtailment/from-raw` with a `target_date_utc` and 96 hourly
+weather **forecast** rows: 24 hours each for west/Galway, south/Cork,
+east/Dublin and north/Belfast. Each row needs its UTC target hour, forecast
+publication time, 100 m wind speed (km/h), shortwave radiation (W/m²), and
+2 m temperature (°C). The API builds the same daily aggregates and calendar
+features used at training time; it does not accept realised future weather or
+curtailment labels. Historical/current dates require a forecast claimed
+available by 00:00 UTC on the target day. Future dates are limited to the next
+seven UTC days and use the actual request time as issue time. Multi-day lead
+accuracy is unvalidated. For either raw route, `input_provenance` says
+`user_supplied_unverified`: shape/timing checks do not prove the forecast or
+source publication was genuine.
+
 ### Predict the next seven full UTC days with V2
 
 Use the same API key with `POST /predict/curtailment/window`. The coverage response above
