@@ -4,19 +4,23 @@ import os
 import secrets
 import logging
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
 from .actuals import ActualsService
 from .constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
 from .daily_curtailment import DEFAULT_HISTORY
-from .daily_model import DEFAULT_REPORT, DailyCurtailmentService
+from .daily_model import DEFAULT_REPORT, EARLIEST_TARGET_DATE, DailyCurtailmentService
 from .inference import DatasetSelectionError, FeatureValidationError, PredictionService
+from .raw_prediction import (
+    V1_RAW_CURRENT_FIELDS, V1_RAW_HISTORY_FIELDS, V1_RATIO_FIELDS,
+    V1_SIGNED_FIELDS, build_v1_features_from_raw, build_v2_features_from_raw,
+)
 from .release_guard import DEFAULT_REPORT_PATH
 
 
@@ -32,12 +36,14 @@ API_DESCRIPTION = """## Choose the right model
 
 | Model | Predicts | Input | Start here |
 | --- | --- | --- | --- |
-| **V1: 30/60-minute** | Renewable **dispatch-down** risk and MWh at one target half-hour, 30 or 60 minutes after an issue time. | A historical dataset issue timestamp and horizon, or a complete live feature snapshot. | `GET /dataset/info` for valid historical dates; `POST /predict/from-dataset` for a simple example. |
-| **V2: daily curtailment (experimental)** | Whether **curtailment** occurs and total curtailment MWh over a full UTC calendar day. This is a different target and time scale from v1. | One historical/current UTC date, or a future start date and 1–7 complete days. | `POST /predict/curtailment/day` for archived inputs; `POST /predict/curtailment/window` for live future weather. |
+| **V1: 30/60-minute** | Renewable **dispatch-down** risk and MWh at one target half-hour, 30 or 60 minutes after an issue time. | A historical dataset issue timestamp; complete original source observations with 48 half-hours of history; or an already engineered feature snapshot. | `GET /model-info` for estimators/scores, `GET /model-info/v1/raw-input-schema` for original-value inputs, then `POST /predict/v1/from-raw` or `POST /predict/from-dataset`. |
+| **V2: daily curtailment (experimental)** | Whether **curtailment** occurs and total curtailment MWh over a full UTC calendar day. This is a different target and time scale from v1. | One historical/current UTC date, 96 user-supplied hourly forecasts for a target day, or a future start date and 1–7 complete days. | `GET /model-info/daily-curtailment` for estimators/scores, `GET /model-info/daily-curtailment/raw-input-schema` for original-value inputs, then `POST /predict/curtailment/from-raw`, `/day` or `/window`. |
 
 V1's dataset replay endpoints use a **fixed historical dataset**. In particular, `/predict/latest` means the latest *dataset row*, **not the current time**. A V1 window is repeated 30/60-minute predictions for at most 24 historical hours, **not a day-ahead forecast**. V2's `/day` route fetches archived 24-hour-lead weather for dates through today UTC. Its `/window` route fetches **live GFS forecasts** for tomorrow through seven days ahead and returns one prediction per full UTC day. Multi-day lead accuracy has **not been validated** against the historical V2 test metric. The version shown in the Swagger header does not choose a model; each prediction reports its own `model_version`.
 
 Send the shared `X-API-Key` using **Authorize** for protected routes. `GET /health` is public and shows whether optional v2 loaded. To compare a prediction with reality, copy `target_timestamp_utc` from v1 to `/actuals/v1`, or `target_date_utc` from v2 to `/actuals/daily-curtailment`. Actuals come from a separately refreshed EirGrid snapshot and may be `pending` or `missing`.
+
+`GET /models/catalog` lists the two tasks. Model-info scores are historical evaluations, **not the error of an individual prediction**. Raw-input routes validate shape and claimed availability times but cannot independently verify that caller-supplied values were truly published at those times; they do not fetch a live V1 source feed.
 """
 
 OPENAPI_TAGS = [
@@ -55,6 +61,92 @@ def _require_timezone(value: datetime) -> datetime:
             "2026-01-15T12:30:00Z"
         )
     return value.astimezone(timezone.utc)
+
+
+def _v1_raw_field_description(name: str) -> str:
+    unit = "0–1 fraction" if name in V1_RATIO_FIELDS else (
+        "EUR/MWh" if name == "entsoe_price_eur_mwh" else "MW"
+    )
+    if name.startswith("entsoe_"):
+        label = name.removeprefix("entsoe_").replace("_generation_mw", " generation")
+        label = label.replace("actual_load_mw", "actual electricity load")
+        label = label.replace("price_eur_mwh", "electricity price")
+        source = "ENTSO-E"
+    else:
+        label = name.removeprefix("eirgrid_").replace("all_island", "all-island (Ireland and Northern Ireland)")
+        label = label.replace("ie_", "Ireland ").replace("ewic", "East-West interconnector")
+        label = label.replace("greenlink", "Greenlink interconnector")
+        label = label.replace("snsp", "system non-synchronous penetration")
+        label = label.replace("_mw", "").replace("_ratio", "")
+        source = "EirGrid"
+    label = label.replace("_", " ")
+    return f"{source} original source value: {label} ({unit}) for the completed issue half-hour. Not a future target."
+
+
+V1RawCurrentObservation = create_model(
+    "V1RawCurrentObservation",
+    __config__=ConfigDict(extra="forbid"),
+    **{
+        name: (
+            float,
+            Field(
+                description=_v1_raw_field_description(name),
+                **({} if name in V1_SIGNED_FIELDS else {"ge": 0}),
+                **({"le": 1} if name in V1_RATIO_FIELDS else {}),
+            ),
+        )
+        for name in V1_RAW_CURRENT_FIELDS
+    },
+    observed_dispatch_down_mwh=(float, Field(
+        ge=0, description="Observed dispatch-down MWh in the completed issue half-hour, already published by issue time. This is a PAST input, not the future dispatch-down target.",
+    )),
+    available_at_utc=(datetime, Field(
+        description="Latest UTC publication/availability time across all current source values, including observed dispatch-down. Must be no later than issue_timestamp_utc; user-provided provenance cannot be independently verified.",
+    )),
+)
+
+
+class V1RawHistoryObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    timestamp_utc: datetime = Field(description="Completed UTC half-hour observation timestamp; supply 48 consecutive rows in ascending order ending 30 minutes before issue.")
+    available_at_utc: datetime = Field(description="Latest UTC availability time for this history row; must be no later than the request issue time.")
+    eirgrid_ie_wind_generation_mw: float = Field(ge=0, description="EirGrid Ireland observed wind generation, MW.")
+    eirgrid_ie_demand_mw: float = Field(ge=0, description="EirGrid Ireland observed electricity demand, MW.")
+    entsoe_price_eur_mwh: float = Field(description="ENTSO-E electricity price, EUR/MWh; negative values are allowed.")
+    eirgrid_snsp_ratio: float = Field(ge=0, le=1, description="EirGrid system non-synchronous penetration as a 0–1 fraction, not percent.")
+    eirgrid_all_island_oversupply_mw: float = Field(ge=0, description="EirGrid all-island oversupply, MW.")
+    observed_dispatch_down_mwh: float = Field(ge=0, description="Past observed dispatch-down energy in this completed half-hour, MWh; not the future target.")
+
+
+class V1RawPredictionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    issue_timestamp_utc: datetime = Field(description="UTC issue timestamp on a :00 or :30 boundary. The current raw values and all 48 history rows must have been available by this time.", examples=["2026-01-31T22:30:00Z"])
+    forecast_horizon_minutes: ForecastHorizon = Field(description="Predict the half-hour beginning 30 or 60 minutes after issue.")
+    flexible_load_capacity_mw: float = Field(default=100, gt=0, le=10000, description="EV/flexible demand capacity in MW used only for recoverable-surplus output.")
+    current_observation: V1RawCurrentObservation = Field(description="Original ENTSO-E and EirGrid source values for the completed issue half-hour. No engineered lags, rolling values or future target.")
+    history: list[V1RawHistoryObservation] = Field(min_length=48, max_length=48, description="Exactly 48 consecutive preceding raw half-hour observations (24 hours of prior context), oldest first.")
+
+    _validate_issue_timestamp = field_validator("issue_timestamp_utc")(_require_timezone)
+
+
+class V2RawHourlyForecast(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    region: Literal["west", "south", "east", "north"] = Field(description="Forecast region: west=Galway, south=Cork, east=Dublin, north=Belfast.")
+    target_hour_utc: datetime = Field(description="One target hour within the requested UTC day, on an exact hourly boundary, ISO 8601 with timezone.")
+    forecast_available_at_utc: datetime = Field(description="When this FORECAST (not realised weather) was published, UTC. It must precede the prediction issue time and target day.")
+    wind_speed_100m_kmh: float = Field(ge=0, description="Forecast wind speed 100 m above ground, km/h.")
+    shortwave_radiation_wm2: float = Field(ge=0, description="Forecast shortwave solar radiation, W/m².")
+    temperature_2m_c: float = Field(description="Forecast air temperature 2 m above ground, °C; negative values are allowed.")
+
+
+class V2RawPredictionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_date_utc: date = Field(description="Whole UTC calendar day to predict, YYYY-MM-DD. Historical/current days require forecasts published by that day's 00:00 UTC; future days can be at most seven days ahead.")
+    hourly_forecasts: list[V2RawHourlyForecast] = Field(min_length=96, max_length=96, description="Exactly 96 source forecast rows: 24 UTC target hours for each of four regions. Do not submit observed weather or curtailment labels.")
 
 
 class DatasetPredictionRequest(BaseModel):
@@ -176,6 +268,20 @@ class DailyCurtailmentResponse(BaseModel):
     curtailment_event_probability: float = Field(description="Probability that any curtailment occurs during this UTC day, between 0 and 1.")
     predicted_curtailment_mwh: float = Field(description="Estimated total curtailment energy over the full UTC day, MWh; not an hourly series.")
     target: str = Field(description="Plain-language definition of the V2 prediction target.")
+
+
+class V1RawPredictionResponse(PredictionResponse):
+    input_provenance: Literal["user_supplied_unverified"] = Field(description="Source values and their claimed availability timestamps came from the caller, not a verified live collector.")
+    engineered_feature_count: int = Field(description="Number of V1 model features recreated from the supplied raw observations, including horizon.")
+    input_notice: str = Field(description="Publication-time and training-distribution limitations of manual V1 inputs.")
+
+
+class V2RawPredictionResponse(DailyCurtailmentResponse):
+    issue_timestamp_utc: str = Field(description="For a future day, actual UTC request time; for a historical/current day, target-day 00:00 UTC using only forecasts claimed available then.")
+    forecast_max_available_at_utc: str = Field(description="Latest claimed forecast publication time in the 96 source rows, no later than issue_timestamp_utc.")
+    input_provenance: Literal["user_supplied_unverified"] = Field(description="Forecast values/publication times came from the caller; the API validates shape and timestamps but cannot authenticate source provenance.")
+    engineered_feature_count: int = Field(description="Number of V2 weather and calendar model features recreated from the 96 hourly inputs.")
+    input_notice: str = Field(description="Limitations of user-supplied forecasts and unvalidated multi-day leads.")
 
 
 class ForwardDailyPredictionResponse(DailyCurtailmentResponse):
@@ -436,12 +542,63 @@ def create_app(
         }
 
     @app.get(
+        "/models/catalog", dependencies=[Depends(require_api_key)], tags=[TAG_SERVICE],
+        summary="List V1 and V2 targets, availability and detailed model-info routes",
+        description="No input. Lists the two different prediction tasks and where to read estimator names, held-out scores and raw-input contracts. Do not compare their MWh MAEs directly: V1 is per half-hour dispatch-down; V2 is per full-day curtailment.",
+    )
+    def models_catalog() -> dict[str, Any]:
+        daily = app.state.daily_curtailment_service
+        return {
+            "models": [
+                {
+                    "model_id": "v1", "available": True,
+                    "model_version": prediction_service.metadata["model_version"],
+                    "target": "Dispatch-down event and MWh per half-hour, 30 or 60 minutes ahead",
+                    "details_endpoint": "/model-info",
+                    "raw_input_schema_endpoint": "/model-info/v1/raw-input-schema",
+                    "raw_prediction_endpoint": "/predict/v1/from-raw",
+                },
+                {
+                    "model_id": "v2", "available": daily is not None,
+                    "model_version": daily.bundle["metadata"]["model_version"] if daily is not None else None,
+                    "target": "Curtailment event and total MWh over a full UTC day",
+                    "details_endpoint": "/model-info/daily-curtailment",
+                    "raw_input_schema_endpoint": "/model-info/daily-curtailment/raw-input-schema",
+                    "raw_prediction_endpoint": "/predict/curtailment/from-raw",
+                },
+            ],
+            "comparison_notice": "Different targets, energy intervals and test sets: do not compare V1 and V2 MWh MAEs numerically.",
+        }
+
+    @app.get(
         "/model-info", dependencies=[Depends(require_api_key)], tags=[TAG_V1],
         summary="V1 model version, required live features and historical dataset range",
-        description="No query or body input. Returns metadata for the 30/60-minute dispatch-down model, including its full `required_live_features` list for `/predict/features`. For exact replay dates use `/dataset/info`.",
+        description="No input. Returns V1's seven fitted estimator names and roles, saved held-out and baseline metrics, serving blend weights, caveats and feature contract. The main MWh result is not necessarily the ML regressor's output. For original-source manual input use `/model-info/v1/raw-input-schema` and `/predict/v1/from-raw`.",
     )
     def model_info() -> dict[str, Any]:
         return prediction_service.model_info()
+
+    @app.get(
+        "/model-info/v1/raw-input-schema",
+        dependencies=[Depends(require_api_key)], tags=[TAG_V1],
+        summary="V1 raw source-value field guide, units and 48-row history contract",
+        description="No input. Explains every current ENTSO-E/EirGrid source field and the five repeated history signals plus past observed dispatch-down. Use the typed `/predict/v1/from-raw` request body in Swagger to enter values. No engineered lags, rolling columns or future target are requested.",
+    )
+    def v1_raw_input_schema() -> dict[str, Any]:
+        return {
+            "model_id": "v1",
+            "prediction_target": "Dispatch-down 30 or 60 minutes after the issue half-hour",
+            "required_history_half_hours": 48,
+            "current_fields": V1RawCurrentObservation.model_json_schema()["properties"],
+            "history_fields": V1RawHistoryObservation.model_json_schema()["properties"],
+            "input_notice": (
+                "Enter original completed-interval source values, not model-engineered features or the future target. "
+                "The latest observed dispatch-down is a past input. Source availability times must be no later "
+                "than issue time, but caller-provided provenance cannot be authenticated by this endpoint. "
+                "The three source-imputation flags are zero because missing raw values are rejected. "
+                "A true current-time forecast also requires a current, causally available source feed."
+            ),
+        }
 
     @app.get(
         "/actuals/coverage",
@@ -526,13 +683,37 @@ def create_app(
     @app.get(
         "/model-info/daily-curtailment", dependencies=[Depends(require_api_key)], tags=[TAG_V2],
         summary="V2 model version, weather features and historical test metrics",
-        description="No input. Returns experimental daily-curtailment model metadata and its **daily** test MAE; do not compare this MAE numerically with V1 half-hour dispatch-down MAE. Returns 503 when V2 is not loaded.",
+        description="No input. Returns V2 classifier/regressor names, candidate selection, daily held-out event/amount scores, baselines, date splits and the unvalidated multi-day lead warning. V1 half-hour dispatch-down MAE is not comparable. Returns 503 when V2 is not loaded.",
     )
     def daily_model_info() -> dict[str, Any]:
         available_service = app.state.daily_curtailment_service
         if available_service is None:
             raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
-        return available_service.bundle["metadata"]
+        return available_service.model_info()
+
+    @app.get(
+        "/model-info/daily-curtailment/raw-input-schema",
+        dependencies=[Depends(require_api_key)], tags=[TAG_V2],
+        summary="V2 original hourly weather forecast input guide and required regions",
+        description="No input. Explains the exact 96 source forecast rows needed for one daily raw-input prediction: 24 UTC hours each for Galway/west, Cork/south, Dublin/east and Belfast/north. Enter forecasts, not realised weather or curtailment labels.",
+    )
+    def v2_raw_input_schema() -> dict[str, Any]:
+        if app.state.daily_curtailment_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
+        return {
+            "model_id": "v2",
+            "required_hourly_rows": 96,
+            "required_regions": {
+                "west": "Galway", "south": "Cork", "east": "Dublin", "north": "Belfast",
+            },
+            "hours_per_region": 24,
+            "hourly_fields": V2RawHourlyForecast.model_json_schema()["properties"],
+            "input_notice": (
+                "All 96 rows must be weather forecasts for the chosen UTC day, with publication times "
+                "no later than prediction issue. The API checks completeness but cannot authenticate "
+                "user-supplied forecast vintages. For future days, longer-lead accuracy is unvalidated."
+            ),
+        }
 
     @app.get(
         "/dataset/daily-curtailment/coverage",
@@ -566,6 +747,56 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(error)) from error
         except (OSError, TimeoutError) as error:
             raise HTTPException(status_code=503, detail=f"Forecast source unavailable: {error}") from error
+
+    @app.post(
+        "/predict/curtailment/from-raw",
+        response_model=V2RawPredictionResponse,
+        dependencies=[Depends(require_api_key)], tags=[TAG_V2],
+        summary="V2: predict one full UTC day from 96 original hourly weather forecasts",
+        description=(
+            "Body: `target_date_utc` and exactly 24 hourly FORECAST records for each of west/Galway, "
+            "south/Cork, east/Dublin and north/Belfast. Each record needs target hour, publication time, "
+            "100 m wind speed in km/h, shortwave radiation in W/m² and 2 m temperature in °C. "
+            "No engineered aggregates or curtailment target. Historical/current days require vintage times "
+            "by that day's 00:00 UTC; future days may be at most seven days ahead and use request time. "
+            "The response is one whole-day V2 prediction, NOT an hourly series. Caller-supplied provenance "
+            "is unverified, and historical V2 MAE does not validate longer future leads. See "
+            "`/model-info/daily-curtailment/raw-input-schema` for region and field guidance."
+        ),
+    )
+    def predict_daily_curtailment_from_raw(request: V2RawPredictionRequest) -> dict[str, Any]:
+        available_service = app.state.daily_curtailment_service
+        if available_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
+        now = datetime.now(timezone.utc)
+        target_date = request.target_date_utc
+        if target_date < EARLIEST_TARGET_DATE or target_date > now.date() + timedelta(days=7):
+            raise HTTPException(status_code=422, detail="target_date_utc must be from 2024-04-01 through seven days after today UTC")
+        issued_at = (
+            now if target_date > now.date()
+            else datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
+        )
+        try:
+            features = build_v2_features_from_raw(
+                target_date, [row.model_dump() for row in request.hourly_forecasts], issued_at,
+            )
+            required = set(available_service.bundle["metadata"]["feature_columns"])
+            available = set(features) - {"issue_timestamp_utc", "forecast_max_available_at_utc"}
+            if available != required:
+                raise HTTPException(status_code=503, detail="Raw V2 adapter does not match the loaded model feature contract")
+            result = available_service.predict_features(features, issued_at_utc=issued_at)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {
+            **result,
+            "input_provenance": "user_supplied_unverified",
+            "engineered_feature_count": len(required),
+            "input_notice": (
+                "User-supplied forecast values and publication times are not authenticated. "
+                "Historical evaluation assumes a specific 24-hour-lead forecast convention; other "
+                "vintages and future multi-day leads do not inherit that measured accuracy."
+            ),
+        }
 
     @app.post(
         "/predict/curtailment/window",
@@ -642,6 +873,50 @@ def create_app(
             raise HTTPException(status_code=404, detail=error.detail) from error
         except FeatureValidationError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post(
+        "/predict/v1/from-raw",
+        response_model=V1RawPredictionResponse,
+        dependencies=[Depends(require_api_key)], tags=[TAG_V1],
+        summary="V1: predict the next 30/60-minute target from original source observations",
+        description=(
+            "Body: a UTC half-hour `issue_timestamp_utc`, 30/60-minute horizon, a complete current "
+            "ENTSO-E/EirGrid source snapshot and exactly 48 consecutive prior half-hour history rows. "
+            "Every source value, including the latest PAST observed dispatch-down, must have been available "
+            "by issue time. Do not supply future target values or engineered lags/rolling columns. "
+            "The API deterministically creates the V1 model's 119 features and predicts the target "
+            "half-hour. This is not a live collector and cannot verify the caller's publication timestamps. "
+            "See `/model-info/v1/raw-input-schema` for plain-language fields and units."
+        ),
+    )
+    def predict_v1_from_raw(request: V1RawPredictionRequest) -> dict[str, Any]:
+        try:
+            features = build_v1_features_from_raw(
+                request.issue_timestamp_utc,
+                request.current_observation.model_dump(),
+                [row.model_dump() for row in request.history],
+                request.forecast_horizon_minutes,
+            )
+            required = set(prediction_service.bundle["feature_columns"])
+            if set(features) != required:
+                raise HTTPException(status_code=503, detail="Raw V1 adapter does not match the loaded model feature contract")
+            result = prediction_service.predict_features(
+                features={key: value for key, value in features.items() if key != "forecast_horizon_minutes"},
+                forecast_horizon_minutes=request.forecast_horizon_minutes,
+                flexible_load_capacity_mw=request.flexible_load_capacity_mw,
+                issue_timestamp_utc=request.issue_timestamp_utc,
+            )
+        except (ValueError, FeatureValidationError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {
+            **result,
+            "input_provenance": "user_supplied_unverified",
+            "engineered_feature_count": len(features),
+            "input_notice": (
+                "All source values and publication times were supplied by the caller. "
+                "The API cannot verify that they were truly known at issue time or match training sources."
+            ),
+        }
 
     @app.post(
         "/predict/window/from-dataset",

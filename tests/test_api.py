@@ -92,6 +92,11 @@ class ApiTests(unittest.TestCase):
             "/dataset/daily-curtailment/coverage": "V2 — daily curtailment model",
             "/predict/curtailment/day": "V2 — daily curtailment model",
             "/predict/curtailment/window": "V2 — daily curtailment model",
+            "/predict/curtailment/from-raw": "V2 — daily curtailment model",
+            "/predict/v1/from-raw": "V1 — 30/60-minute model",
+            "/model-info/v1/raw-input-schema": "V1 — 30/60-minute model",
+            "/model-info/daily-curtailment/raw-input-schema": "V2 — daily curtailment model",
+            "/models/catalog": "Service",
             "/actuals/coverage": "Observed outcomes",
             "/actuals/v1": "Observed outcomes",
             "/actuals/v1/batch": "Observed outcomes",
@@ -374,6 +379,8 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.client.get("/dataset/daily-curtailment/coverage").status_code, 503)
+        self.assertEqual(self.client.get("/model-info/daily-curtailment/raw-input-schema").status_code, 503)
+        self.assertFalse(self.client.get("/models/catalog").json()["models"][1]["available"])
         self.assertEqual(self.client.get("/health").status_code, 200)
 
     def test_broken_optional_daily_model_cannot_take_v1_offline(self) -> None:
@@ -394,6 +401,9 @@ class ApiTests(unittest.TestCase):
 
             def load(self):
                 pass
+
+            def model_info(self):
+                return self.bundle["metadata"]
 
             def predict_date(self, target_date):
                 return {
@@ -425,6 +435,9 @@ class ApiTests(unittest.TestCase):
 
             def load(self):
                 pass
+
+            def model_info(self):
+                return self.bundle["metadata"]
 
             def predict_forward_window(self, start_date, days):
                 return {

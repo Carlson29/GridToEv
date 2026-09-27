@@ -96,7 +96,11 @@ feature set.
 ## 6. FastAPI serving
 
 The server loads the model bundle once during startup. A request does not rerun either notebook and
-does not retrain anything. Prediction is therefore quick enough for an interactive frontend.
+does not retrain anything. Prediction is therefore quick enough for an interactive frontend. The
+manual raw-input routes reconstruct the frozen feature contracts from complete source values:
+V1 needs the issue half-hour plus 48 prior raw half-hours; V2 needs 24 hourly forecasts in each
+of four regions. They refuse missing context and late-available inputs rather than silently
+inventing features. Caller-provided source publication times cannot be authenticated by the API.
 
 The demo endpoints are:
 

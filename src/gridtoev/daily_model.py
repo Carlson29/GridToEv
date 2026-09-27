@@ -251,6 +251,63 @@ class DailyCurtailmentService:
             raise ValueError("Daily model training dataset hash does not match its evaluation report")
         self.bundle = bundle
 
+    def model_info(self) -> dict:
+        if self.bundle is None:
+            self.load()
+        assert self.bundle is not None
+        report = json.loads(self.report_path.read_text(encoding="utf-8"))
+        info = dict(self.bundle["metadata"])
+        info["model_id"] = "v2"
+        info["target_description"] = "Whether any curtailment occurs and total curtailment MWh over one UTC day"
+        info["metric_guide"] = {
+            "daily_mae_mwh": "Average absolute miss in total curtailment energy per complete UTC day, MWh; lower is better.",
+            "event_average_precision": "How well event probabilities rank curtailment days; higher is better and compare with event rate.",
+            "event_brier_score": "Average squared probability error for the curtailment event; lower is better.",
+            "event_roc_auc": "Ranking of curtailment versus non-curtailment days; higher is better.",
+            "positive_day_mae_mwh": "Average amount error only on days when curtailment actually occurred, MWh; lower is better.",
+        }
+        info["prediction_components"] = {
+            "event_model": {
+                "estimator": type(self.bundle["event_model"]).__name__,
+                "hyperparameters": {
+                    key: self.bundle["event_model"].get_params(deep=False)[key]
+                    for key in ("max_iter", "max_leaf_nodes", "min_samples_leaf", "learning_rate", "l2_regularization", "random_state")
+                },
+                "role": "Probability that curtailment occurs during the day",
+                "test_metrics": {
+                    key: report["test"][key]
+                    for key in ("event_average_precision", "event_brier_score", "event_roc_auc")
+                },
+            },
+            "amount_model": {
+                "estimator": type(self.bundle["amount_model"]).__name__,
+                "hyperparameters": {
+                    key: value for key, value in self.bundle["amount_model"].get_params(deep=False).items()
+                    if key in ("n_estimators", "min_samples_leaf", "max_features", "n_jobs", "random_state", "loss", "max_iter", "max_leaf_nodes", "learning_rate", "l2_regularization")
+                },
+                "role": "Positive-day curtailment MWh; the two-stage serving estimate multiplies it by event probability",
+                "selected_method": info["selected_amount_method"],
+                "separate_test_score_available": False,
+            },
+        }
+        info["evaluation"] = {
+            "train_rows": report["rows"]["train"],
+            "validation_rows": report["rows"]["validation"],
+            "test_rows": report["rows"]["test"],
+            "date_ranges": report["date_ranges"],
+            "validation_amount_mae_mwh_by_candidate": report["validation_amount_mae_mwh"],
+            "test": report["test"],
+            "test_zero_amount_baseline": report["test_zero_amount_baseline"],
+            "test_monthly_median_baseline_mae_mwh": report["test_monthly_median_baseline_mae_mwh"],
+            "test_by_quarter": report["test_by_quarter"],
+            "future_window_notice": (
+                "Accuracy of the live multi-day V2 window is not validated by the fixed-24-hour-lead historical test."
+            ),
+            "source_caveat": report["source_caveat"],
+            "not_comparable_to_v1_mae": report["not_comparable_to_v1_mae"],
+        }
+        return info
+
     def dataset_coverage(self) -> dict:
         """Describe the frozen evaluation days separately from requestable forecast dates."""
         if self.bundle is None:

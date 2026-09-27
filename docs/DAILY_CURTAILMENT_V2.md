@@ -34,8 +34,10 @@ If the optional bundle or report fails validation, v1 still starts and serves no
 The new endpoints are:
 
 - `GET /dataset/daily-curtailment/coverage` — historical train/validation/test date ranges and complete-day counts, fitted-through date, and the separate currently requestable UTC-date range. This does **not** claim every later date has a complete archived weather forecast.
-- `GET /model-info/daily-curtailment` — version, features, data hash and test MAE.
+- `GET /model-info/daily-curtailment` — version, fitted classifier/regressor names and roles, feature list, candidate validation scores, full-day test metrics and baselines. Scores do not validate future multi-day forecast leads.
+- `GET /model-info/daily-curtailment/raw-input-schema` — plain-language guide to the original hourly forecast fields and four regions.
 - `POST /predict/curtailment/day` with `{"target_date_utc":"YYYY-MM-DD"}` — probability of at least some curtailment and predicted total MWh for that UTC day.
+- `POST /predict/curtailment/from-raw` — supply 24 hourly forecast rows for each of the four regions (96 total); the API builds daily features and predicts that target UTC day. Forecast publication times must be known by issue, but caller-supplied provenance is not independently verified.
 - `POST /predict/curtailment/window` with `{"start_date_utc":"YYYY-MM-DD","days":7}` — one prediction per complete future UTC day, starting no earlier than tomorrow and ending no later than seven days after today UTC. This separate live-GFS path is experimental at multi-day leads.
 - `GET /actuals/daily-curtailment?target_date_utc=YYYY-MM-DD` — the observed complete-day curtailment after it appears in the EirGrid archive; see `docs/ACTUALS_API.md`.
 
