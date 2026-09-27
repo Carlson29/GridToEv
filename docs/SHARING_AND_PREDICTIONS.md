@@ -78,9 +78,9 @@ python -m gridtoev.server
    forecasts for the newest row in the bundled demonstration dataset.
 4. To choose an historical interval, call `GET /dataset/available-times`, copy one timestamp, then
    send it to `POST /predict/from-dataset` with a horizon of `30` or `60`.
-5. For an array covering 2, 24, or up to 48 hours of historical issue times, call
+5. For an array covering 2 or up to 24 hours of historical issue times, call
    `POST /predict/window/from-dataset`, supply a valid `start_timestamp_utc`, and use
-   `duration_hours: 2`, `24`, or `48`.
+   `duration_hours: 2` or `24`.
 
 The bundled data is historical, so `latest` means the newest timestamp in that file, not live grid
 conditions. True live prediction requires a separate collector to create the full feature snapshot
@@ -103,13 +103,13 @@ only saying “not found.”
 ```
 
 Send this body to `POST /predict/window/from-dataset`. A 2-hour request returns four half-hour issue
-times, or eight prediction objects when both horizons are selected. A 48-hour request returns 96 issue
-times, or 192 prediction objects with both horizons. The response also includes a separate summary
+times, or eight prediction objects when both horizons are selected. A 24-hour request returns 48 issue
+times, or 96 prediction objects with both horizons. The response also includes a separate summary
 for each horizon so totals are not accidentally double-counted.
 
 This is a rolling historical replay: every item is still a 30- or 60-minute forecast using the feature
 row available at that item's issue time. It is useful for charts, demonstrations, and backtesting, but
-it is not a single forecast made 2, 24, or 48 hours ahead.
+it is not a single forecast made 2 or 24 hours ahead.
 
 ## Use experimental daily V2
 
@@ -130,6 +130,29 @@ yet fail if the forecast source lacks a complete day. To check the observed outc
 returned `target_date_utc` to `GET /actuals/daily-curtailment`; `GET /actuals/coverage` shows which
 complete UTC days have observed labels. V2 is experimental and should not be used as a dispatch
 instruction.
+
+### Predict the next seven full UTC days with V2
+
+Use the same API key with `POST /predict/curtailment/window`. The coverage response above
+provides `forward_window_date_min_utc` and `forward_window_date_max_utc`. For a seven-day window,
+set `start_date_utc` to that minimum date (**tomorrow UTC**) and `days` to `7`:
+
+```json
+{"start_date_utc":"2026-09-28","days":7}
+```
+
+Replace the example date with the actual next UTC date when you make the request. You may
+request 1–7 consecutive full days, but the last date cannot be later than seven days after
+today UTC. Today's partly elapsed day is excluded. The response has an ordered `predictions`
+array, one event probability and total curtailment MWh for each UTC day. It uses a fresh,
+uncached Open-Meteo GFS forecast, not the historical dataset. `issued_at_utc` is the actual
+request time; `forecast_lead_hours` shows the time until each day's start. Future EirGrid
+measurements and realised weather are not used. The existing V2 model was evaluated on
+24-hour-lead archived forecasts, so **multi-day accuracy is not validated** and the historical
+test MAE must not be presented as this endpoint's expected error. If the live provider is
+unavailable or lacks a complete day, the entire request returns 503 rather than an incomplete
+prediction array. Check each `target_date_utc` at `/actuals/daily-curtailment` once observed
+labels become available.
 
 ## Make a prediction from PowerShell
 
@@ -198,7 +221,7 @@ in the website's server-side environment and proxy requests to GridToEV.
 ## How to read a response
 
 To retrieve the observed outcome later, copy `target_timestamp_utc` into
-`GET /actuals/v1`. For a 48-hour prediction array, send its target timestamps
+`GET /actuals/v1`. For a 24-hour prediction array, send its target timestamps
 to `POST /actuals/v1/batch`. Actual values can be `pending` until the EirGrid
 archive is refreshed; see `docs/ACTUALS_API.md` for statuses and examples.
 

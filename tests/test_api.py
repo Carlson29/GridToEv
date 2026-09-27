@@ -3,7 +3,7 @@ import tempfile
 import unittest
 import warnings
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -91,6 +91,7 @@ class ApiTests(unittest.TestCase):
             "/model-info/daily-curtailment": "V2 — daily curtailment model",
             "/dataset/daily-curtailment/coverage": "V2 — daily curtailment model",
             "/predict/curtailment/day": "V2 — daily curtailment model",
+            "/predict/curtailment/window": "V2 — daily curtailment model",
             "/actuals/coverage": "Observed outcomes",
             "/actuals/v1": "Observed outcomes",
             "/actuals/v1/batch": "Observed outcomes",
@@ -105,6 +106,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("historical", schema["paths"]["/predict/latest"]["get"]["description"].lower())
         self.assertIn("not a day-ahead", schema["paths"]["/predict/window/from-dataset"]["post"]["description"].lower())
         self.assertIn("YYYY-MM-DD", schema["components"]["schemas"]["DailyCurtailmentRequest"]["properties"]["target_date_utc"]["description"])
+        self.assertEqual(schema["components"]["schemas"]["DatasetWindowPredictionRequest"]["properties"]["duration_hours"]["maximum"], 24)
 
     def test_daily_dataset_coverage_requires_key_and_shows_historical_and_request_ranges(self) -> None:
         service = PredictionService(self.artifact_path, self.dataset_path)
@@ -248,20 +250,30 @@ class ApiTests(unittest.TestCase):
         ]
         self.assertEqual(order, sorted(order))
 
-    def test_two_day_window_and_out_of_range_guidance(self) -> None:
+    def test_one_day_window_and_out_of_range_guidance(self) -> None:
         issue_times = self.data["issue_timestamp_utc"].drop_duplicates().sort_values()
         issue_times = issue_times.reset_index(drop=True)
         valid = self.client.post(
             "/predict/window/from-dataset",
             json={
                 "start_timestamp_utc": issue_times.iloc[5].isoformat(),
-                "duration_hours": 48,
+                "duration_hours": 24,
                 "forecast_horizons_minutes": [30],
             },
         )
         self.assertEqual(valid.status_code, 200, valid.text)
-        self.assertEqual(valid.json()["prediction_count"], 96)
-        self.assertEqual(valid.json()["duration_hours"], 48)
+        self.assertEqual(valid.json()["prediction_count"], 48)
+        self.assertEqual(valid.json()["duration_hours"], 24)
+        self.assertEqual(self.client.get("/dataset/info").json()["maximum_window_hours"], 24)
+        too_long = self.client.post(
+            "/predict/window/from-dataset",
+            json={"start_timestamp_utc": issue_times.iloc[5].isoformat(), "duration_hours": 24.5},
+        )
+        self.assertEqual(too_long.status_code, 422)
+        with self.assertRaisesRegex(FeatureValidationError, "between 0.5 and 24"):
+            self.client.app.state.prediction_service.predict_window_from_dataset(
+                issue_times.iloc[5], 24.5, [30],
+            )
 
         invalid = self.client.post(
             "/predict/window/from-dataset",
@@ -404,6 +416,38 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(response.json()["target_date_utc"], "2026-09-26")
             self.assertEqual(client.get("/model-info/daily-curtailment").json()["model_version"],
                              "2.0.0-daily-experimental")
+
+    def test_forward_daily_window_contract_auth_and_validation(self) -> None:
+        tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
+
+        class FakeDailyService:
+            bundle = {"metadata": {"model_version": "2.0.0-daily-experimental"}}
+
+            def load(self):
+                pass
+
+            def predict_forward_window(self, start_date, days):
+                return {
+                    "model_version": "2.0.0-daily-experimental",
+                    "semantics": "live_forward_daily_curtailment",
+                    "experimental": True,
+                    "notice": "Longer leads are not validated.",
+                    "forecast_source": "Open-Meteo live gfs_global",
+                    "issued_at_utc": datetime.now(timezone.utc).isoformat(),
+                    "start_date_utc": start_date.isoformat(),
+                    "end_date_utc": (start_date + timedelta(days=days - 1)).isoformat(),
+                    "prediction_count": 0,
+                    "predictions": [],
+                }
+
+        service = PredictionService(self.artifact_path, self.dataset_path)
+        with TestClient(create_app(service, api_key="secret", daily_service=FakeDailyService())) as client:
+            payload = {"start_date_utc": tomorrow.isoformat(), "days": 7}
+            self.assertEqual(client.post("/predict/curtailment/window", json=payload).status_code, 401)
+            response = client.post("/predict/curtailment/window", json=payload, headers={"X-API-Key": "secret"})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["start_date_utc"], tomorrow.isoformat())
+            self.assertEqual(client.post("/predict/curtailment/window", json={**payload, "days": 8}, headers={"X-API-Key": "secret"}).status_code, 422)
 
 
 if __name__ == "__main__":

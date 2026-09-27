@@ -3,8 +3,9 @@ import unittest
 import hashlib
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -17,6 +18,63 @@ from gridtoev.daily_curtailment import DEFAULT_DAILY_DATASET
 
 
 class DailyModelTests(unittest.TestCase):
+    def test_forward_window_returns_seven_causal_daily_predictions(self):
+        service = DailyCurtailmentService(DEFAULT_ARTIFACT, DEFAULT_REPORT)
+        today = datetime.now(timezone.utc).date()
+        start = today + timedelta(days=1)
+        hours = pd.date_range(start, periods=7 * 24, freq="h", tz="UTC")
+        retrieved = pd.Timestamp.now(tz="UTC")
+
+        def live_region(region, first, last):
+            self.assertEqual((first, last), (start, today + timedelta(days=7)))
+            return pd.DataFrame({
+                "target_hour_utc": hours, "region": region,
+                "available_at_utc": retrieved,
+                "wind_speed_100m_kmh": [20.0] * len(hours),
+                "shortwave_radiation_wm2": [100.0] * len(hours),
+                "temperature_2m_c": [12.0] * len(hours),
+            })
+
+        with patch("gridtoev.daily_model.fetch_live_forecast", side_effect=live_region) as fetch:
+            result = service.predict_forward_window(start, 7)
+        self.assertEqual(fetch.call_count, 4)
+        self.assertEqual(result["prediction_count"], 7)
+        self.assertEqual(len(result["predictions"]), 7)
+        self.assertEqual(result["predictions"][0]["target_date_utc"], start.isoformat())
+        self.assertEqual(result["predictions"][-1]["target_date_utc"], (today + timedelta(days=7)).isoformat())
+        self.assertTrue(all(pd.Timestamp(item["issue_timestamp_utc"]) >= retrieved for item in result["predictions"]))
+        self.assertTrue(all(item["forecast_lead_hours"] > 0 for item in result["predictions"]))
+        self.assertIn("not validated", result["notice"].lower())
+
+    def test_forward_window_rejects_invalid_range_before_fetch(self):
+        service = DailyCurtailmentService(DEFAULT_ARTIFACT, DEFAULT_REPORT)
+        today = datetime.now(timezone.utc).date()
+        with patch("gridtoev.daily_model.fetch_live_forecast") as fetch:
+            with self.assertRaisesRegex(ValueError, "tomorrow"):
+                service.predict_forward_window(today, 1)
+            with self.assertRaisesRegex(ValueError, "seven"):
+                service.predict_forward_window(today + timedelta(days=7), 2)
+            fetch.assert_not_called()
+
+    def test_forward_window_rejects_missing_hour_without_partial_results(self):
+        service = DailyCurtailmentService(DEFAULT_ARTIFACT, DEFAULT_REPORT)
+        today = datetime.now(timezone.utc).date()
+        start = today + timedelta(days=1)
+        hours = pd.date_range(start, periods=24, freq="h", tz="UTC")[:-1]
+
+        def incomplete(region, first, last):
+            return pd.DataFrame({
+                "target_hour_utc": hours, "region": region,
+                "available_at_utc": pd.Timestamp.now(tz="UTC"),
+                "wind_speed_100m_kmh": [20.0] * len(hours),
+                "shortwave_radiation_wm2": [100.0] * len(hours),
+                "temperature_2m_c": [12.0] * len(hours),
+            })
+
+        with patch("gridtoev.daily_model.fetch_live_forecast", side_effect=incomplete):
+            with self.assertRaisesRegex(OSError, "complete"):
+                service.predict_forward_window(start, 1)
+
     def test_partitions_are_strictly_chronological(self):
         dates = pd.to_datetime(["2024-12-31", "2025-01-01", "2025-12-31", "2026-01-01"], utc=True)
         frame = pd.DataFrame({"issue_timestamp_utc": dates})
@@ -80,6 +138,9 @@ class DailyModelTests(unittest.TestCase):
         self.assertEqual(coverage["historical_date_max_utc"], "2026-08-30")
         self.assertEqual(coverage["partitions"]["test"]["complete_day_count"], report["rows"]["test"])
         self.assertEqual(coverage["requestable_date_max_utc"], datetime.now(timezone.utc).date().isoformat())
+        self.assertEqual(coverage["forward_window_date_min_utc"], (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat())
+        self.assertEqual(coverage["forward_window_date_max_utc"], (datetime.now(timezone.utc).date() + timedelta(days=7)).isoformat())
+        self.assertEqual(coverage["maximum_forward_window_days"], 7)
         self.assertIn("not guaranteed", coverage["request_notice"].lower())
 
 

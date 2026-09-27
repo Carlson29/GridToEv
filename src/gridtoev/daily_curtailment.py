@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -22,6 +22,7 @@ from .constants import PROJECT_ROOT
 
 
 FORECAST_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
+LIVE_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 FORECAST_MODEL = "gfs_global"
 REGIONS = {
     "west": (53.27, -9.05),  # Galway / Atlantic wind
@@ -34,6 +35,7 @@ API_VARIABLES = (
     "shortwave_radiation_previous_day1",
     "temperature_2m_previous_day1",
 )
+LIVE_API_VARIABLES = tuple(variable.removesuffix("_previous_day1") for variable in API_VARIABLES)
 VALUE_COLUMNS = (
     "wind_speed_100m_kmh",
     "shortwave_radiation_wm2",
@@ -44,8 +46,10 @@ DEFAULT_DAILY_DATASET = PROJECT_ROOT / "data" / "processed" / "daily_curtailment
 DEFAULT_RAW_DIR = PROJECT_ROOT / "data" / "raw" / "open_meteo_previous_runs"
 
 
-def _request_json(params: dict[str, object], *, attempts: int = 3) -> dict:
-    url = f"{FORECAST_URL}?{urlencode(params)}"
+def _request_json(
+    params: dict[str, object], *, attempts: int = 3, base_url: str = FORECAST_URL,
+) -> dict:
+    url = f"{base_url}?{urlencode(params)}"
     for attempt in range(attempts):
         try:
             with urlopen(url, timeout=45) as response:
@@ -119,6 +123,53 @@ def parse_previous_runs(payload: dict, region: str) -> pd.DataFrame:
         "available_at_utc": target_hours - pd.Timedelta(days=1),
     })
     for source, destination in zip(API_VARIABLES, VALUE_COLUMNS):
+        frame[destination] = pd.to_numeric(hourly[source], errors="coerce")
+    return frame
+
+
+def fetch_live_forecast(region: str, start: date, end: date) -> pd.DataFrame:
+    """Fetch uncached GFS forecasts; timestamp actual retrieval, never future weather."""
+
+    if region not in REGIONS:
+        raise ValueError(f"Unknown region: {region}")
+    if end < start:
+        raise ValueError("end must not precede start")
+    latitude, longitude = REGIONS[region]
+    try:
+        payload = _request_json({
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "hourly": ",".join(LIVE_API_VARIABLES),
+            "models": FORECAST_MODEL,
+            "timezone": "UTC",
+            "temperature_unit": "celsius",
+            "wind_speed_unit": "kmh",
+        }, base_url=LIVE_FORECAST_URL)
+    except ValueError as error:
+        raise OSError("Live forecast provider rejected the request") from error
+    retrieved_at = datetime.now(timezone.utc)
+    if payload.get("utc_offset_seconds") != 0:
+        raise OSError("Live forecast response must use UTC")
+    hourly = payload.get("hourly", {})
+    missing = (set(LIVE_API_VARIABLES) | {"time"}) - set(hourly)
+    if missing:
+        raise OSError(f"Live forecast response missing {sorted(missing)}")
+    if len({len(hourly[key]) for key in ("time", *LIVE_API_VARIABLES)}) != 1:
+        raise OSError("Live forecast response arrays differ in length")
+    try:
+        target_hours = pd.to_datetime(hourly["time"], utc=True, errors="raise")
+    except (TypeError, ValueError) as error:
+        raise OSError("Live forecast response has invalid target hours") from error
+    if target_hours.has_duplicates:
+        raise OSError("Live forecast response contains duplicate target hours")
+    frame = pd.DataFrame({
+        "target_hour_utc": target_hours,
+        "region": region,
+        "available_at_utc": retrieved_at,
+    })
+    for source, destination in zip(LIVE_API_VARIABLES, VALUE_COLUMNS):
         frame[destination] = pd.to_numeric(hourly[source], errors="coerce")
     return frame
 

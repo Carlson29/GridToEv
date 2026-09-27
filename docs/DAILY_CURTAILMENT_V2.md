@@ -36,6 +36,7 @@ The new endpoints are:
 - `GET /dataset/daily-curtailment/coverage` — historical train/validation/test date ranges and complete-day counts, fitted-through date, and the separate currently requestable UTC-date range. This does **not** claim every later date has a complete archived weather forecast.
 - `GET /model-info/daily-curtailment` — version, features, data hash and test MAE.
 - `POST /predict/curtailment/day` with `{"target_date_utc":"YYYY-MM-DD"}` — probability of at least some curtailment and predicted total MWh for that UTC day.
+- `POST /predict/curtailment/window` with `{"start_date_utc":"YYYY-MM-DD","days":7}` — one prediction per complete future UTC day, starting no earlier than tomorrow and ending no later than seven days after today UTC. This separate live-GFS path is experimental at multi-day leads.
 - `GET /actuals/daily-curtailment?target_date_utc=YYYY-MM-DD` — the observed complete-day curtailment after it appears in the EirGrid archive; see `docs/ACTUALS_API.md`.
 
 `GET /actuals/coverage` describes a **different** EirGrid actual-value snapshot. The V2 coverage
@@ -50,6 +51,8 @@ Invoke-RestMethod -Uri http://localhost:8000/predict/curtailment/day -Method Pos
 ```
 
 The target date must be between **2024-04-01 and the current UTC date**: earlier fixed-GFS archive coverage is incomplete, while tomorrow's full set of 24-hour-lead forecast values is not yet available at today's issue time. Live requests fetch four archived forecast snapshots from Open-Meteo; if the provider is unavailable, the API returns 503 rather than substituting today's observed weather. Requests need network access, and deployment must comply with the data provider's applicable usage terms. The Render Blueprint enables this experimental option on the live service; its forecasts should not be treated as dispatch instructions.
+
+For `/predict/curtailment/window`, the date rule differs: provide a future UTC start day and 1–7 days wholly within tomorrow through today+7. The route fetches uncached current GFS weather for the same four regions, checks that all 24 hourly forecasts exist for every region and day, and scores them with the already-deployed V2 classifier and regressor. It records actual retrieval/issue time and never uses future observed weather or curtailment labels. The returned array is all-or-nothing. Because this model was trained and tested using fixed 24-hour-lead retrospective forecasts, **its reported daily test MAE does not validate the new, longer-lead route**. Treat the result as a planning experiment pending prospectively captured, lead-specific evaluation.
 
 ## Interpretation and release cautions
 
