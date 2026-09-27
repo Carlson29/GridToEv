@@ -40,7 +40,7 @@ class RawApiTests(unittest.TestCase):
         self.assertEqual(v2["prediction_components"]["amount_model"]["estimator"], "ExtraTreesRegressor")
         self.assertEqual(v2["prediction_components"]["amount_model"]["hyperparameters"]["n_estimators"], 240)
         self.assertEqual(v2["evaluation"]["test"]["daily_mae_mwh"], 1723.390575132749)
-        self.assertIn("not validated", v2["evaluation"]["future_window_notice"].lower())
+        self.assertIn("bundled historical model dataset", v2["evaluation"]["dataset_window_notice"].lower())
 
     def test_v1_raw_schema_and_prediction_match_historical_replay(self):
         schema = self.client.get("/model-info/v1/raw-input-schema", headers=self.headers)

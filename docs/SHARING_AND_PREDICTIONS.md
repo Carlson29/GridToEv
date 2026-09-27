@@ -109,7 +109,9 @@ for each horizon so totals are not accidentally double-counted.
 
 This is a rolling historical replay: every item is still a 30- or 60-minute forecast using the feature
 row available at that item's issue time. It is useful for charts, demonstrations, and backtesting, but
-it is not a single forecast made 2 or 24 hours ahead.
+it is not a single forecast made 2 or 24 hours ahead. Swagger now prefills a complete latest
+historical 24-hour replay (`2026-01-30T22:30:00Z`, 24 hours, both horizons). Its 96 results
+are past dataset replay predictions, not a forecast for the next 24 hours from today.
 
 ## Use experimental daily V2
 
@@ -213,30 +215,27 @@ accuracy is unvalidated. For either raw route, `input_provenance` says
 source publication was genuine.
 If you lack 96 source forecasts, `POST /predict/curtailment/day` fetches an
 archived daily forecast for one historical/current UTC day, while
-`POST /predict/curtailment/window` fetches live weather for 1–7 future days.
+`POST /predict/curtailment/window` replays 1–7 consecutive dates already in
+the bundled V2 model dataset.
 
-### Predict the next seven full UTC days with V2
+### Replay seven full UTC dataset days with V2
 
 Use the same API key with `POST /predict/curtailment/window`. The coverage response above
-provides `forward_window_date_min_utc` and `forward_window_date_max_utc`. For a seven-day window,
-set `start_date_utc` to that minimum date (**tomorrow UTC**) and `days` to `7`:
+provides `window_date_min_utc` and `window_date_max_utc`. For a seven-day window,
+choose a start date whose seven consecutive days are all within that dataset:
 
 ```json
-{"start_date_utc":"2026-09-28","days":7}
+{"start_date_utc":"2026-04-28","days":7}
 ```
 
-Replace the example date with the actual next UTC date when you make the request. You may
-request 1–7 consecutive full days, but the last date cannot be later than seven days after
-today UTC. Today's partly elapsed day is excluded. The response has an ordered `predictions`
-array, one event probability and total curtailment MWh for each UTC day. It uses a fresh,
-uncached Open-Meteo GFS forecast, not the historical dataset. `issued_at_utc` is the actual
-request time; `forecast_lead_hours` shows the time until each day's start. Future EirGrid
-measurements and realised weather are not used. The existing V2 model was evaluated on
-24-hour-lead archived forecasts, so **multi-day accuracy is not validated** and the historical
-test MAE must not be presented as this endpoint's expected error. If the live provider is
-unavailable or lacks a complete day, the entire request returns 503 rather than an incomplete
-prediction array. Check each `target_date_utc` at `/actuals/daily-curtailment` once observed
-labels become available.
+This returns an ordered `predictions` array for April 28–May 4. Each item is one
+full-day curtailment probability and MWh estimate from the already stored weather
+forecast/calendar features. Curtailment outcome columns are never fed to the model.
+The API rejects any missing or future dataset date, and it makes no live-weather
+request. This is historical replay, **not** the next seven days from now. Dates
+used to fit the model are in-sample; the saved held-out evaluation remains the
+honest performance measure. Check each `target_date_utc` at
+`/actuals/daily-curtailment` if you want a separately reported observed outcome.
 
 ## Make a prediction from PowerShell
 

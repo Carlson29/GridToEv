@@ -15,3 +15,5 @@ services:
         sync: false
       - key: GRIDTOEV_DAILY_MODEL_PATH
         value: "/app/models/v2/daily_curtailment_bundle.joblib"
+      - key: GRIDTOEV_DAILY_DATASET_PATH
+        value: "/app/data/processed/daily_curtailment_forecast_v2.csv.gz"

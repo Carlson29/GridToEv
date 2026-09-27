@@ -25,7 +25,7 @@ The first command caches public source JSON in git-ignored `data/raw/open_meteo_
 
 ## Opt-in API
 
-Set `GRIDTOEV_DAILY_MODEL_PATH=models/v2/daily_curtailment_bundle.joblib` in the API environment and start FastAPI as usual. The loader verifies its SHA-256 against `benchmarks/daily_curtailment_v2/evaluation.json` **before** deserializing it; `GRIDTOEV_DAILY_REPORT_PATH` can select that trusted report if it lives elsewhere. Without the model setting, all v1 endpoints continue to work and the daily endpoint returns 503.
+Set `GRIDTOEV_DAILY_MODEL_PATH=models/v2/daily_curtailment_bundle.joblib` in the API environment and start FastAPI as usual. The loader verifies the artifact SHA-256 against `benchmarks/daily_curtailment_v2/evaluation.json` **before** deserializing it, and verifies the bundled model dataset checksum before V2 serves historical windows. `GRIDTOEV_DAILY_REPORT_PATH` and `GRIDTOEV_DAILY_DATASET_PATH` can select those files if they live elsewhere. Without the model setting, all v1 endpoints continue to work and the daily endpoints return 503.
 
 The Docker image leaves `GRIDTOEV_DAILY_MODEL_PATH` unset, while the live Render Blueprint sets it to `/app/models/v2/daily_curtailment_bundle.joblib`. Docker Compose still passes the setting through only when explicitly supplied by the operator. `GET /health` reports `daily_model_available` so operators can confirm that the optional model loaded without changing v1 readiness. To turn v2 off on Render, remove or clear the variable in the Blueprint and sync/redeploy; the v1 artifact and routes do not change.
 
@@ -33,12 +33,12 @@ If the optional bundle or report fails validation, v1 still starts and serves no
 
 The new endpoints are:
 
-- `GET /dataset/daily-curtailment/coverage` — historical train/validation/test date ranges and complete-day counts, fitted-through date, and the separate currently requestable UTC-date range. This does **not** claim every later date has a complete archived weather forecast.
-- `GET /model-info/daily-curtailment` — version, fitted classifier/regressor names and roles, feature list, candidate validation scores, full-day test metrics and baselines. Scores do not validate future multi-day forecast leads.
+- `GET /dataset/daily-curtailment/coverage` — historical train/validation/test date ranges and complete-day counts, fitted-through date, dataset-window dates, and the separate currently requestable single-day archive range. This does **not** claim every later date has a complete archived weather forecast.
+- `GET /model-info/daily-curtailment` — version, fitted classifier/regressor names and roles, feature list, candidate validation scores, full-day test metrics and baselines. Dates used to fit the model are not independent tests.
 - `GET /model-info/daily-curtailment/raw-input-schema` — plain-language guide to the original hourly forecast fields and four regions.
 - `POST /predict/curtailment/day` with `{"target_date_utc":"YYYY-MM-DD"}` — probability of at least some curtailment and predicted total MWh for that UTC day.
 - `POST /predict/curtailment/from-raw` — supply 24 hourly forecast rows for each of the four regions (96 total); the API builds daily features and predicts that target UTC day. Forecast publication times must be known by issue, but caller-supplied provenance is not independently verified.
-- `POST /predict/curtailment/window` with `{"start_date_utc":"YYYY-MM-DD","days":7}` — one prediction per complete future UTC day, starting no earlier than tomorrow and ending no later than seven days after today UTC. This separate live-GFS path is experimental at multi-day leads.
+- `POST /predict/curtailment/window` with `{"start_date_utc":"2026-04-28","days":7}` — one historical replay prediction per complete V2 model-dataset day, April 28–May 4 in this example. Future or missing dataset dates are rejected.
 - `GET /actuals/daily-curtailment?target_date_utc=YYYY-MM-DD` — the observed complete-day curtailment after it appears in the EirGrid archive; see `docs/ACTUALS_API.md`.
 
 `GET /actuals/coverage` describes a **different** EirGrid actual-value snapshot. The V2 coverage
@@ -58,7 +58,7 @@ Invoke-RestMethod -Uri http://localhost:8000/predict/curtailment/day -Method Pos
 
 The target date must be between **2024-04-01 and the current UTC date**: earlier fixed-GFS archive coverage is incomplete, while tomorrow's full set of 24-hour-lead forecast values is not yet available at today's issue time. Live requests fetch four archived forecast snapshots from Open-Meteo; if the provider is unavailable, the API returns 503 rather than substituting today's observed weather. Requests need network access, and deployment must comply with the data provider's applicable usage terms. The Render Blueprint enables this experimental option on the live service; its forecasts should not be treated as dispatch instructions.
 
-For `/predict/curtailment/window`, the date rule differs: provide a future UTC start day and 1–7 days wholly within tomorrow through today+7. The route fetches uncached current GFS weather for the same four regions, checks that all 24 hourly forecasts exist for every region and day, and scores them with the already-deployed V2 classifier and regressor. It records actual retrieval/issue time and never uses future observed weather or curtailment labels. The returned array is all-or-nothing. Because this model was trained and tested using fixed 24-hour-lead retrospective forecasts, **its reported daily test MAE does not validate the new, longer-lead route**. Treat the result as a planning experiment pending prospectively captured, lead-specific evaluation.
+For `/predict/curtailment/window`, all 1–7 consecutive UTC dates must be in the bundled V2 model dataset (currently 2024-04-01 through 2026-08-30); inspect `window_date_min_utc` and `window_date_max_utc` in the coverage response. The route uses only that dataset's archived forecast/calendar feature columns, **not** its curtailment labels, and makes no weather-network call. This is a retrospective sequence of daily predictions, not a forecast of the next seven days from today. Dates through 2025-12-31 were used to fit the saved model and are in-sample; use the held-out report, not replay errors on those dates, to judge accuracy. The two raw-input Swagger demos remain the only examples that target the first unlabelled observation after their respective model datasets.
 
 ## Interpretation and release cautions
 

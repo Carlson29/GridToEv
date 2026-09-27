@@ -19,7 +19,6 @@ from .daily_curtailment import (
     FORECAST_MODEL,
     REGIONS,
     build_forecast_features,
-    fetch_live_forecast,
     fetch_previous_runs,
 )
 
@@ -235,10 +234,13 @@ class DailyCurtailmentService:
         self,
         artifact_path: Path = DEFAULT_ARTIFACT,
         report_path: Path = DEFAULT_REPORT,
+        dataset_path: Path = DEFAULT_DAILY_DATASET,
     ) -> None:
         self.artifact_path = Path(artifact_path)
         self.report_path = Path(report_path)
+        self.dataset_path = Path(dataset_path)
         self.bundle: dict | None = None
+        self.dataset: pd.DataFrame | None = None
 
     def load(self) -> None:
         report = json.loads(self.report_path.read_text(encoding="utf-8"))
@@ -249,7 +251,11 @@ class DailyCurtailmentService:
             raise ValueError("Not a compatible daily curtailment bundle")
         if bundle["metadata"]["dataset_sha256"] != report["dataset_sha256"]:
             raise ValueError("Daily model training dataset hash does not match its evaluation report")
+        if _sha256(self.dataset_path) != report["dataset_sha256"]:
+            raise ValueError("Daily serving dataset checksum does not match its evaluation report")
+        dataset = _validate_dataset(pd.read_csv(self.dataset_path))
         self.bundle = bundle
+        self.dataset = dataset
 
     def model_info(self) -> dict:
         if self.bundle is None:
@@ -300,8 +306,9 @@ class DailyCurtailmentService:
             "test_zero_amount_baseline": report["test_zero_amount_baseline"],
             "test_monthly_median_baseline_mae_mwh": report["test_monthly_median_baseline_mae_mwh"],
             "test_by_quarter": report["test_by_quarter"],
-            "future_window_notice": (
-                "Accuracy of the live multi-day V2 window is not validated by the fixed-24-hour-lead historical test."
+            "dataset_window_notice": (
+                "The 1–7-day window replays only complete days in the bundled historical model dataset. "
+                "It does not predict future days or use target labels as model inputs."
             ),
             "source_caveat": report["source_caveat"],
             "not_comparable_to_v1_mae": report["not_comparable_to_v1_mae"],
@@ -315,6 +322,8 @@ class DailyCurtailmentService:
         assert self.bundle is not None
         report = json.loads(self.report_path.read_text(encoding="utf-8"))
         today = datetime.now(timezone.utc).date()
+        assert self.dataset is not None
+        dataset_days = self.dataset["issue_timestamp_utc"].dt.date
         partitions = {
             split: {
                 "first_target_date_utc": date.fromisoformat(report["date_ranges"][split][0][:10]).isoformat(),
@@ -332,9 +341,9 @@ class DailyCurtailmentService:
             "fitted_through_date_utc": self.bundle["metadata"]["trained_through_utc"][:10],
             "requestable_date_min_utc": EARLIEST_TARGET_DATE.isoformat(),
             "requestable_date_max_utc": today.isoformat(),
-            "forward_window_date_min_utc": (today + timedelta(days=1)).isoformat(),
-            "forward_window_date_max_utc": (today + timedelta(days=7)).isoformat(),
-            "maximum_forward_window_days": 7,
+            "window_date_min_utc": dataset_days.min().isoformat(),
+            "window_date_max_utc": dataset_days.max().isoformat(),
+            "maximum_window_days": 7,
             "date_format": "YYYY-MM-DD",
             "timezone": "UTC",
             "dataset_sha256": report["dataset_sha256"],
@@ -343,6 +352,7 @@ class DailyCurtailmentService:
                 "The historical dataset is a fixed development/evaluation snapshot, not the live request limit. "
                 "A date through today UTC can be requested, but a prediction is not guaranteed if the "
                 "Open-Meteo forecast archive lacks all required hourly inputs. "
+                "The 1–7-day window uses only consecutive rows already in the bundled V2 model dataset. "
                 "Observed daily outcomes have separate coverage at /actuals/coverage."
             ),
         }
@@ -395,57 +405,42 @@ class DailyCurtailmentService:
             raise ValueError("The archived forecast has missing hours or unavailable inputs for this day")
         return self.predict_features(features)
 
-    def predict_forward_window(self, start_date: date, days: int = 7) -> dict:
-        """Score complete future UTC days from live, uncached weather forecasts.
+    def predict_dataset_window(self, start_date: date, days: int = 7) -> dict:
+        """Replay consecutive V2 model-dataset feature rows, never their labels."""
 
-        The existing V2 bundle is reused without retraining. Its test metrics
-        describe fixed 24-hour-lead archive fields, not these longer leads.
-        """
-
-        today = datetime.now(timezone.utc).date()
-        if start_date <= today:
-            raise ValueError("start_date_utc must be tomorrow UTC or later for complete future days")
+        if self.bundle is None or self.dataset is None:
+            self.load()
+        assert self.bundle is not None and self.dataset is not None
         if days < 1 or days > 7:
             raise ValueError("days must be between 1 and 7")
-        end_date = start_date + timedelta(days=days - 1)
-        if end_date > today + timedelta(days=7):
-            raise ValueError("The last target day must be within the next seven UTC days")
-
-        forecasts = pd.concat(
-            [fetch_live_forecast(region, start_date, end_date) for region in REGIONS],
-            ignore_index=True,
-        )
-        issued_at = datetime.now(timezone.utc)
-        if start_date <= issued_at.date():
-            raise ValueError("start_date_utc is no longer a future UTC day; retry with tomorrow UTC")
-        try:
-            features = build_forecast_features(forecasts)
-        except ValueError as error:
-            raise OSError("Live forecast inputs are malformed or incomplete") from error
-        expected = [start_date + timedelta(days=offset) for offset in range(days)]
-        actual = [] if features.empty else list(pd.to_datetime(features["issue_timestamp_utc"], utc=True).dt.date)
-        if actual != expected:
-            raise OSError("Live forecast lacks complete hourly weather inputs for every requested UTC day")
-
-        predictions = []
-        for _, row in features.iterrows():
-            prediction = self.predict_features(row.to_frame().T, issued_at_utc=issued_at)
-            target_start = datetime.combine(date.fromisoformat(prediction["target_date_utc"]), datetime.min.time(), tzinfo=timezone.utc)
-            prediction["forecast_lead_hours"] = round((target_start - issued_at).total_seconds() / 3600, 2)
-            predictions.append(prediction)
+        expected = pd.date_range(start_date, periods=days, freq="D", tz="UTC")
+        available = self.dataset.set_index("issue_timestamp_utc", drop=False)
+        missing = expected.difference(available.index)
+        if not missing.empty:
+            first = available.index.min().date().isoformat()
+            last = available.index.max().date().isoformat()
+            raise ValueError(
+                f"The requested window is not fully in the V2 model dataset ({first} through {last}); "
+                f"first missing UTC day: {missing[0].date().isoformat()}. "
+                "Use GET /dataset/daily-curtailment/coverage and select 1–7 consecutive dataset days. "
+                "This endpoint does not forecast future dates."
+            )
+        columns = ["issue_timestamp_utc", "forecast_max_available_at_utc", *self.bundle["metadata"]["feature_columns"]]
+        # Explicitly leave curtailment_mwh and curtailment_event out of model inputs.
+        inputs = available.loc[expected, columns]
+        predictions = [self.predict_features(inputs.iloc[[index]]) for index in range(days)]
         return {
-            "model_version": predictions[0]["model_version"],
-            "semantics": "live_forward_daily_curtailment",
+            "model_version": self.bundle["metadata"]["model_version"],
+            "semantics": "historical_dataset_daily_curtailment",
             "experimental": True,
             "notice": (
-                "These live GFS forecasts are available at request time, but V2 was trained and "
-                "tested on fixed 24-hour-lead archived weather. Accuracy at multi-day leads is "
-                "not validated; do not use as a dispatch instruction."
+                "Historical model-dataset replay, not a future forecast. Only archived forecast and calendar "
+                "features are model inputs; curtailment labels are excluded. Dates used to fit the model "
+                "can yield in-sample predictions, not independent validation scores."
             ),
-            "forecast_source": f"Open-Meteo live {FORECAST_MODEL}",
-            "issued_at_utc": issued_at.isoformat(),
+            "forecast_source": "Bundled V2 model dataset (Open-Meteo GFS previous_day1)",
             "start_date_utc": start_date.isoformat(),
-            "end_date_utc": end_date.isoformat(),
+            "end_date_utc": expected[-1].date().isoformat(),
             "prediction_count": len(predictions),
             "predictions": predictions,
         }

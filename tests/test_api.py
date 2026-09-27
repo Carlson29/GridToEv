@@ -293,6 +293,12 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(detail["error"], "dataset_window_not_available")
         self.assertIn("latest_valid_start_utc_for_duration", detail)
 
+        example = self.client.get("/openapi.json").json()["paths"]["/predict/window/from-dataset"]["post"]["requestBody"]["content"]["application/json"]["example"]
+        self.assertEqual(example["duration_hours"], 24)
+        example_response = self.client.post("/predict/window/from-dataset", json=example)
+        self.assertEqual(example_response.status_code, 200, example_response.text)
+        self.assertEqual(example_response.json()["semantics"], "historical_rolling_short_horizon")
+
     def test_optional_api_key_protects_data_and_prediction_routes(self) -> None:
         service = PredictionService(self.artifact_path, self.dataset_path)
         with TestClient(create_app(service, api_key="team-secret")) as secured_client:
@@ -427,40 +433,28 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(client.get("/model-info/daily-curtailment").json()["model_version"],
                              "2.0.0-daily-experimental")
 
-    def test_forward_daily_window_contract_auth_and_validation(self) -> None:
-        tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
-
-        class FakeDailyService:
-            bundle = {"metadata": {"model_version": "2.0.0-daily-experimental"}}
-
-            def load(self):
-                pass
-
-            def model_info(self):
-                return self.bundle["metadata"]
-
-            def predict_forward_window(self, start_date, days):
-                return {
-                    "model_version": "2.0.0-daily-experimental",
-                    "semantics": "live_forward_daily_curtailment",
-                    "experimental": True,
-                    "notice": "Longer leads are not validated.",
-                    "forecast_source": "Open-Meteo live gfs_global",
-                    "issued_at_utc": datetime.now(timezone.utc).isoformat(),
-                    "start_date_utc": start_date.isoformat(),
-                    "end_date_utc": (start_date + timedelta(days=days - 1)).isoformat(),
-                    "prediction_count": 0,
-                    "predictions": [],
-                }
-
+    def test_daily_dataset_window_accepts_april_example_and_rejects_future(self) -> None:
         service = PredictionService(self.artifact_path, self.dataset_path)
-        with TestClient(create_app(service, api_key="secret", daily_service=FakeDailyService())) as client:
-            payload = {"start_date_utc": tomorrow.isoformat(), "days": 7}
+        with TestClient(create_app(service, api_key="secret", daily_service=DailyCurtailmentService())) as client:
+            payload = {"start_date_utc": "2026-04-28", "days": 7}
             self.assertEqual(client.post("/predict/curtailment/window", json=payload).status_code, 401)
             response = client.post("/predict/curtailment/window", json=payload, headers={"X-API-Key": "secret"})
             self.assertEqual(response.status_code, 200, response.text)
-            self.assertEqual(response.json()["start_date_utc"], tomorrow.isoformat())
+            self.assertEqual(response.json()["semantics"], "historical_dataset_daily_curtailment")
+            self.assertEqual(response.json()["start_date_utc"], "2026-04-28")
+            self.assertEqual(response.json()["end_date_utc"], "2026-05-04")
+            self.assertEqual(response.json()["prediction_count"], 7)
             self.assertEqual(client.post("/predict/curtailment/window", json={**payload, "days": 8}, headers={"X-API-Key": "secret"}).status_code, 422)
+            future = client.post(
+                "/predict/curtailment/window",
+                json={"start_date_utc": "2026-09-28", "days": 7},
+                headers={"X-API-Key": "secret"},
+            )
+            self.assertEqual(future.status_code, 422, future.text)
+            self.assertIn("dataset", future.text.lower())
+
+            example = client.get("/openapi.json").json()["paths"]["/predict/curtailment/window"]["post"]["requestBody"]["content"]["application/json"]["example"]
+            self.assertEqual(example, payload)
 
 
 if __name__ == "__main__":
