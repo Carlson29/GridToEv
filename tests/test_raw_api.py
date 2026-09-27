@@ -97,6 +97,40 @@ class RawApiTests(unittest.TestCase):
             "target_date_utc": target.isoformat(), "hourly_forecasts": rows,
         }, headers=self.headers).status_code, 422)
 
+    def test_swagger_raw_request_examples_are_complete_and_accepted(self):
+        openapi = self.client.get("/openapi.json").json()
+        v1_example = openapi["paths"]["/predict/v1/from-raw"]["post"]["requestBody"]["content"]["application/json"]["example"]
+        self.assertEqual(len(v1_example["history"]), 48)
+        self.assertLessEqual(
+            pd.Timestamp(v1_example["current_observation"]["available_at_utc"]),
+            pd.Timestamp(v1_example["issue_timestamp_utc"]),
+        )
+        v1_response = self.client.post("/predict/v1/from-raw", json=v1_example, headers=self.headers)
+        self.assertEqual(v1_response.status_code, 200, v1_response.text)
+
+        v2_example = openapi["paths"]["/predict/curtailment/from-raw"]["post"]["requestBody"]["content"]["application/json"]["example"]
+        self.assertEqual(len(v2_example["hourly_forecasts"]), 96)
+        self.assertEqual(len({(row["region"], row["target_hour_utc"]) for row in v2_example["hourly_forecasts"]}), 96)
+        v2_response = self.client.post("/predict/curtailment/from-raw", json=v2_example, headers=self.headers)
+        self.assertEqual(v2_response.status_code, 200, v2_response.text)
+
+    def test_v1_unavailable_current_value_error_explains_the_two_times(self):
+        expected, current, history = historical_v1_raw_request()
+        current["available_at_utc"] = (
+            pd.Timestamp(expected["issue_timestamp_utc"]) + pd.Timedelta(minutes=1)
+        ).isoformat()
+        response = self.client.post("/predict/v1/from-raw", json={
+            "issue_timestamp_utc": expected["issue_timestamp_utc"],
+            "forecast_horizon_minutes": 30,
+            "current_observation": current,
+            "history": history,
+        }, headers=self.headers)
+        self.assertEqual(response.status_code, 422)
+        detail = response.json()["detail"]
+        self.assertIn("available_at_utc", detail)
+        self.assertIn("issue_timestamp_utc", detail)
+        self.assertIn("Do not backdate", detail)
+
 
 if __name__ == "__main__":
     unittest.main()
