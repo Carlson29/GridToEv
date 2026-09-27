@@ -8,7 +8,9 @@ The prediction responses already contain the lookup key. Copy `target_timestamp_
 | v1 historical window array | `POST /actuals/v1/batch` with `{"target_timestamps_utc":["2026-01-15T12:30:00Z", "2026-01-15T13:00:00Z"]}` | same fields, array in request order (maximum 200) |
 | Optional daily-v2 prediction | `GET /actuals/daily-curtailment?target_date_utc=2026-01-15` | complete UTC-day curtailment MWh and event |
 
-`GET /actuals/coverage` gives the archive's earliest/latest half-hour and complete-day dates. This is **observation coverage**, not the V1 or V2 model-ready dataset coverage. For model-input coverage use `GET /dataset/info` (V1) or `GET /dataset/daily-curtailment/coverage` (V2). All four actuals routes are read-only and use the same optional API-key protection as the prediction routes. Timestamps must be timezone-aware ISO 8601 and align to a UTC half-hour. The daily date is `YYYY-MM-DD` in UTC, not Irish local time.
+`GET /actuals/coverage` now separates two different date ranges in one response. The top-level `available_target_timestamp_*` and `complete_day_*` fields describe the **EirGrid observed-outcome archive**. Its nested `v1_prediction_dataset.available_issue_timestamp_*` fields describe the loaded **V1 30/60-minute model-input dataset** instead. In the bundled snapshot, the actuals archive starts in 2021 and ends on 2026-08-31, whereas V1 issue times span 2026-01-02 through 2026-01-31. These are not supposed to match: actuals can exist on dates the V1 model-ready dataset cannot replay. The older top-level field names remain for existing clients. For full model-input coverage and accepted input format use `GET /dataset/info` (V1) or `GET /dataset/daily-curtailment/coverage` (V2). All four actuals routes are read-only and use the same optional API-key protection as the prediction routes. Timestamps must be timezone-aware ISO 8601 and align to a UTC half-hour. The daily date is `YYYY-MM-DD` in UTC, not Irish local time.
+
+Archive minimum/maximum dates are bounds, not a promise that every intervening actual is valid; check the individual lookup's `status`.
 
 Every lookup returns `status`:
 

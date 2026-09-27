@@ -352,13 +352,24 @@ class DailyActualResponse(BaseModel):
     complete_half_hour_count: int = Field(description="48 for an available complete UTC day, otherwise 0.")
 
 
+class V1PredictionDatasetCoverage(BaseModel):
+    available_issue_timestamp_min_utc: str = Field(description="Earliest V1 model-ready issue time; this is not an observed-outcome timestamp.")
+    available_issue_timestamp_max_utc: str = Field(description="Latest V1 model-ready issue time across the supported horizons; individual horizons may end earlier.")
+    available_issue_timestamp_count: int = Field(description="Number of distinct V1 model-ready issue times.")
+    supported_forecast_horizons_minutes: list[int] = Field(description="V1 horizons available in the model-ready dataset.")
+    coverage_endpoint: Literal["/dataset/info"] = Field(description="Authoritative V1 dataset coverage and input-format endpoint.")
+
+
 class ActualsCoverageResponse(BaseModel):
+    coverage_kind: Literal["observed_outcomes_archive"] = Field(description="These top-level dates cover observed outcomes, not V1 prediction inputs.")
     source: str = Field(description="EirGrid observation archive, separate from either prediction model.")
     available_target_timestamp_min_utc: str = Field(description="Earliest stored half-hour target for V1 actual-value lookups.")
     available_target_timestamp_max_utc: str = Field(description="Latest stored half-hour target for V1 actual-value lookups.")
     complete_day_min_utc: str | None = Field(description="Earliest complete UTC day for V2 actual-value lookups.")
     complete_day_max_utc: str | None = Field(description="Latest complete UTC day for V2 actual-value lookups.")
     notice: str = Field(description="Archive refresh limitations; this endpoint does not describe model-training coverage.")
+    coverage_notice: str = Field(description="Explains the difference between observed-outcome and V1 prediction-input dates.")
+    v1_prediction_dataset: V1PredictionDatasetCoverage = Field(description="Separate V1 model-ready input range. Use /dataset/info for full details.")
 
 
 class PointActualBatchRequest(BaseModel):
@@ -611,15 +622,31 @@ def create_app(
         response_model=ActualsCoverageResponse,
         dependencies=[Depends(require_api_key)],
         tags=[TAG_ACTUALS],
-        summary="Actuals archive coverage for V1 half-hours and V2 complete days",
-        description="No input. This EirGrid observation snapshot is separate from both modelling datasets. Half-hour bounds guide V1 actual lookups; complete-day bounds guide V2 actual lookups. Later actuals are pending until the archive is refreshed.",
+        summary="Observed-outcome archive dates, plus separate V1 prediction-input dates",
+        description="No input. Top-level bounds describe the EirGrid **actuals archive**, not dates accepted by V1 prediction routes. `v1_prediction_dataset` shows the separately loaded V1 30/60-minute issue-time range; `/dataset/info` has its full rules. Complete-day bounds are V2 observed outcomes, not V2 prediction-input coverage (`/dataset/daily-curtailment/coverage`). Later actuals are pending until the archive is refreshed.",
     )
     def actuals_coverage() -> dict[str, Any]:
         try:
-            return observation_service.coverage()
+            actuals = observation_service.coverage()
         except (OSError, ValueError) as error:
             logger.warning("Actuals archive unavailable: %s", type(error).__name__)
             raise HTTPException(status_code=503, detail="Actuals archive unavailable") from error
+        v1 = prediction_service.dataset_info()
+        return {
+            **actuals,
+            "coverage_kind": "observed_outcomes_archive",
+            "coverage_notice": (
+                "Top-level dates are observed-outcome archive coverage, not V1 prediction-input coverage. "
+                "Use v1_prediction_dataset or /dataset/info for V1 30/60-minute issue times."
+            ),
+            "v1_prediction_dataset": {
+                "available_issue_timestamp_min_utc": v1["available_issue_timestamp_min_utc"],
+                "available_issue_timestamp_max_utc": v1["available_issue_timestamp_max_utc"],
+                "available_issue_timestamp_count": v1["available_issue_timestamp_count"],
+                "supported_forecast_horizons_minutes": v1["supported_forecast_horizons_minutes"],
+                "coverage_endpoint": "/dataset/info",
+            },
+        }
 
     @app.get(
         "/actuals/v1",

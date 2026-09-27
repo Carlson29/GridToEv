@@ -367,7 +367,22 @@ class ApiTests(unittest.TestCase):
             batch = client.post("/actuals/v1/batch", json={"target_timestamps_utc": ["2026-01-01T00:30:00Z", "2026-01-01T01:00:00Z"]}, headers=headers)
             self.assertEqual(batch.status_code, 200, batch.text)
             self.assertEqual(batch.json()["count"], 2)
-            self.assertEqual(client.get("/actuals/coverage", headers=headers).status_code, 200)
+            coverage_response = client.get("/actuals/coverage", headers=headers)
+            self.assertEqual(coverage_response.status_code, 200)
+            coverage = coverage_response.json()
+            self.assertEqual(coverage["coverage_kind"], "observed_outcomes_archive")
+            self.assertEqual(coverage["available_target_timestamp_min_utc"], "2026-01-01T00:00:00+00:00")
+            v1_dataset = client.get("/dataset/info", headers=headers).json()
+            self.assertEqual(
+                coverage["v1_prediction_dataset"]["available_issue_timestamp_min_utc"],
+                v1_dataset["available_issue_timestamp_min_utc"],
+            )
+            self.assertEqual(
+                coverage["v1_prediction_dataset"]["available_issue_timestamp_max_utc"],
+                v1_dataset["available_issue_timestamp_max_utc"],
+            )
+            self.assertEqual(coverage["v1_prediction_dataset"]["coverage_endpoint"], "/dataset/info")
+            self.assertIn("not V1 prediction-input coverage", coverage["coverage_notice"])
             self.assertEqual(client.get("/actuals/v1", params={"target_timestamp_utc": "2026-01-01T00:30:00"}, headers=headers).status_code, 422)
 
     def test_missing_actuals_archive_does_not_affect_v1(self) -> None:
