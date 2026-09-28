@@ -1,0 +1,481 @@
+{
+  "experiment": "daily_source_allocation_v2",
+  "status": "experimental_estimate_only",
+  "task": "Split V2's predicted UTC-day curtailment MWh into Wind and Solar",
+  "parent_model": {
+    "model_version": "2.0.0-daily-experimental",
+    "selected_amount_method": "two_stage",
+    "validation_totals": "Refit of the V2 recipe on the train partition only (out-of-sample for 2025)",
+    "test_totals": "Saved V2 artifact, trained through 2025-12-31 (out-of-sample for 2026)",
+    "validation_parent_mae_mwh": 1588.3494368394706,
+    "test_parent_mae_mwh": 1723.390575132749
+  },
+  "serving_equation": "wind = T_hat * clamp(p_wind, 0, 1); solar = T_hat - wind",
+  "feature_columns": [
+    "east_wind_mean_kmh",
+    "north_wind_mean_kmh",
+    "south_wind_mean_kmh",
+    "west_wind_mean_kmh",
+    "east_wind_max_kmh",
+    "north_wind_max_kmh",
+    "south_wind_max_kmh",
+    "west_wind_max_kmh",
+    "east_wind_p75_kmh",
+    "north_wind_p75_kmh",
+    "south_wind_p75_kmh",
+    "west_wind_p75_kmh",
+    "east_solar_sum_wm2h",
+    "north_solar_sum_wm2h",
+    "south_solar_sum_wm2h",
+    "west_solar_sum_wm2h",
+    "east_temperature_mean_c",
+    "north_temperature_mean_c",
+    "south_temperature_mean_c",
+    "west_temperature_mean_c",
+    "wind_regional_spread_kmh",
+    "calendar_day_sin",
+    "calendar_day_cos",
+    "calendar_weekend"
+  ],
+  "inputs": {
+    "dataset_sha256": "0ad04074632cc2f15a499b0e3f3546124054259ecd566d9593c2ed7ff6ac2cab",
+    "source_labels_sha256": "a81078b9b65afbe214d6d812403cd4367b429be3c402f91eda6d158110a8dd04",
+    "parent_artifact_sha256": "6b2bcf6c3a3cff265bbfb581071e3bb4749d1459d7326909971d5cb5ea97d2de"
+  },
+  "date_ranges": {
+    "train": [
+      "2024-04-01",
+      "2024-12-31"
+    ],
+    "validation": [
+      "2025-01-01",
+      "2025-12-31"
+    ],
+    "test": [
+      "2026-01-01",
+      "2026-08-30"
+    ]
+  },
+  "rows": {
+    "train": 275,
+    "validation": 365,
+    "test": 242
+  },
+  "actual_solar_share_of_mwh": {
+    "train": 0.056482,
+    "validation": 0.127,
+    "test": 0.189951
+  },
+  "candidates": [
+    "wind_only",
+    "training_global_share",
+    "training_monthly_share",
+    "hgb_share",
+    "logistic_share",
+    "direct_source_regressors"
+  ],
+  "baselines": [
+    "wind_only",
+    "training_monthly_share"
+  ],
+  "selected_on_validation": "training_monthly_share",
+  "validation_end_to_end": {
+    "wind_only": {
+      "rows": 365,
+      "wind_mae_mwh": 1436.174317091151,
+      "solar_mae_mwh": 244.58112602739726,
+      "combined_source_mae_mwh": 1680.7554431185483,
+      "wind_bias_mwh": 325.4603059389553,
+      "solar_bias_mwh": -244.58112602739726,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 212,
+      "curtailment_positive_combined_source_mae_mwh": 2584.614463287657,
+      "solar_active_days": 190,
+      "solar_active_solar_mae_mwh": 469.8532157894737,
+      "predicted_solar_share_of_mwh": 0.0,
+      "actual_solar_share_of_mwh": 0.127000147948046
+    },
+    "training_global_share": {
+      "rows": 365,
+      "wind_mae_mwh": 1399.2670749444935,
+      "solar_mae_mwh": 239.45672826995707,
+      "combined_source_mae_mwh": 1638.7238032144508,
+      "wind_bias_mwh": 212.11690090971987,
+      "solar_bias_mwh": -131.23772099816168,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 212,
+      "curtailment_positive_combined_source_mae_mwh": 2512.2486681697533,
+      "solar_active_days": 190,
+      "solar_active_solar_mae_mwh": 437.3785613831853,
+      "predicted_solar_share_of_mwh": 0.056482132256190934,
+      "actual_solar_share_of_mwh": 0.127000147948046
+    },
+    "training_monthly_share": {
+      "rows": 365,
+      "wind_mae_mwh": 1417.1342095121063,
+      "solar_mae_mwh": 219.46102758358506,
+      "combined_source_mae_mwh": 1636.5952370956911,
+      "wind_bias_mwh": 211.4088314042423,
+      "solar_bias_mwh": -130.5296514926841,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 212,
+      "curtailment_positive_combined_source_mae_mwh": 2508.583919899248,
+      "solar_active_days": 190,
+      "solar_active_solar_mae_mwh": 399.43843550597705,
+      "predicted_solar_share_of_mwh": 0.056834982741357176,
+      "actual_solar_share_of_mwh": 0.127000147948046
+    },
+    "hgb_share": {
+      "rows": 365,
+      "wind_mae_mwh": 1435.946151450045,
+      "solar_mae_mwh": 205.75673873731054,
+      "combined_source_mae_mwh": 1641.7028901873553,
+      "wind_bias_mwh": 212.27692860631072,
+      "solar_bias_mwh": -131.3977486947525,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 212,
+      "curtailment_positive_combined_source_mae_mwh": 2517.377756590085,
+      "solar_active_days": 190,
+      "solar_active_solar_mae_mwh": 369.1367154313907,
+      "predicted_solar_share_of_mwh": 0.056402386059037544,
+      "actual_solar_share_of_mwh": 0.127000147948046
+    },
+    "logistic_share": {
+      "rows": 365,
+      "wind_mae_mwh": 1447.3624610196025,
+      "solar_mae_mwh": 196.67688307100903,
+      "combined_source_mae_mwh": 1644.0393440906114,
+      "wind_bias_mwh": 235.17856495087952,
+      "solar_bias_mwh": -154.29938503932144,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 212,
+      "curtailment_positive_combined_source_mae_mwh": 2521.4004248669175,
+      "solar_active_days": 190,
+      "solar_active_solar_mae_mwh": 364.4017138618069,
+      "predicted_solar_share_of_mwh": 0.04498987156325829,
+      "actual_solar_share_of_mwh": 0.127000147948046
+    },
+    "direct_source_regressors": {
+      "rows": 365,
+      "wind_mae_mwh": 1412.5797960756086,
+      "solar_mae_mwh": 226.29851240285797,
+      "combined_source_mae_mwh": 1638.8783084784666,
+      "wind_bias_mwh": 221.4115150432144,
+      "solar_bias_mwh": -140.5323351316561,
+      "max_conservation_error_mwh": 2.842170943040401e-14,
+      "curtailment_positive_days": 212,
+      "curtailment_positive_combined_source_mae_mwh": 2512.5146795912906,
+      "solar_active_days": 190,
+      "solar_active_solar_mae_mwh": 388.4082170981566,
+      "predicted_solar_share_of_mwh": 0.051850370711503946,
+      "actual_solar_share_of_mwh": 0.127000147948046
+    }
+  },
+  "test_end_to_end": {
+    "wind_only": {
+      "rows": 242,
+      "wind_mae_mwh": 1550.2828145784072,
+      "solar_mae_mwh": 438.85566115702477,
+      "combined_source_mae_mwh": 1989.138475735432,
+      "wind_bias_mwh": 257.18348060594667,
+      "solar_bias_mwh": -438.85566115702477,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 118,
+      "curtailment_positive_combined_source_mae_mwh": 3461.9329472577274,
+      "solar_active_days": 117,
+      "solar_active_solar_mae_mwh": 907.718547008547,
+      "predicted_solar_share_of_mwh": 0.0,
+      "actual_solar_share_of_mwh": 0.18995075411497855
+    },
+    "training_global_share": {
+      "rows": 242,
+      "wind_mae_mwh": 1486.332342942214,
+      "solar_mae_mwh": 374.0909724891327,
+      "combined_source_mae_mwh": 1860.4233154313463,
+      "wind_bias_mwh": 48.830810584683825,
+      "solar_bias_mwh": -230.50299113576187,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 118,
+      "curtailment_positive_combined_source_mae_mwh": 3197.957787990027,
+      "solar_active_days": 117,
+      "solar_active_solar_mae_mwh": 712.4489860640166,
+      "predicted_solar_share_of_mwh": 0.0978782016940586,
+      "actual_solar_share_of_mwh": 0.18995075411497855
+    },
+    "training_monthly_share": {
+      "rows": 242,
+      "wind_mae_mwh": 1490.9033390331406,
+      "solar_mae_mwh": 329.7315096462317,
+      "combined_source_mae_mwh": 1820.634848679372,
+      "wind_bias_mwh": 24.23915160468947,
+      "solar_bias_mwh": -205.91133215576764,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 118,
+      "curtailment_positive_combined_source_mae_mwh": 3116.3577121088592,
+      "solar_active_days": 117,
+      "solar_active_solar_mae_mwh": 633.0572676570814,
+      "predicted_solar_share_of_mwh": 0.10943066875574659,
+      "actual_solar_share_of_mwh": 0.18995075411497855
+    },
+    "hgb_share": {
+      "rows": 242,
+      "wind_mae_mwh": 1482.1681929408114,
+      "solar_mae_mwh": 337.14605727149336,
+      "combined_source_mae_mwh": 1819.314250212305,
+      "wind_bias_mwh": 51.99129586182582,
+      "solar_bias_mwh": -233.6634764129039,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 118,
+      "curtailment_positive_combined_source_mae_mwh": 3113.6493661001277,
+      "solar_active_days": 117,
+      "solar_active_solar_mae_mwh": 649.575801226789,
+      "predicted_solar_share_of_mwh": 0.09639349494479718,
+      "actual_solar_share_of_mwh": 0.18995075411497855
+    },
+    "logistic_share": {
+      "rows": 242,
+      "wind_mae_mwh": 1488.7010105381871,
+      "solar_mae_mwh": 331.85397244850975,
+      "combined_source_mae_mwh": 1820.5549829866966,
+      "wind_bias_mwh": 61.69394332579075,
+      "solar_bias_mwh": -243.36612387686887,
+      "max_conservation_error_mwh": 0.0,
+      "curtailment_positive_days": 118,
+      "curtailment_positive_combined_source_mae_mwh": 3116.193919756084,
+      "solar_active_days": 117,
+      "solar_active_solar_mae_mwh": 637.7143951241895,
+      "predicted_solar_share_of_mwh": 0.09183546511322653,
+      "actual_solar_share_of_mwh": 0.18995075411497855
+    },
+    "direct_source_regressors": {
+      "rows": 242,
+      "wind_mae_mwh": 1504.3518883287036,
+      "solar_mae_mwh": 346.81865822281407,
+      "combined_source_mae_mwh": 1851.1705465515174,
+      "wind_bias_mwh": 83.94492115860535,
+      "solar_bias_mwh": -265.6171017096834,
+      "max_conservation_error_mwh": 7.105427357601002e-15,
+      "curtailment_positive_days": 118,
+      "curtailment_positive_combined_source_mae_mwh": 3178.9817704568186,
+      "solar_active_days": 117,
+      "solar_active_solar_mae_mwh": 669.7195398497845,
+      "predicted_solar_share_of_mwh": 0.08138258396710062,
+      "actual_solar_share_of_mwh": 0.18995075411497855
+    }
+  },
+  "test_by_quarter": {
+    "2026Q1": {
+      "training_monthly_share": {
+        "rows": 90,
+        "solar_mae_mwh": 150.3432831190212,
+        "combined_source_mae_mwh": 1760.6306433641378,
+        "solar_active_days": 43,
+        "predicted_solar_share_of_mwh": 0.07767086347281348,
+        "actual_solar_share_of_mwh": 0.0906120591614607
+      },
+      "wind_only": {
+        "rows": 90,
+        "solar_mae_mwh": 195.5791666666667,
+        "combined_source_mae_mwh": 1793.3039581418439,
+        "solar_active_days": 43,
+        "predicted_solar_share_of_mwh": 0.0,
+        "actual_solar_share_of_mwh": 0.0906120591614607
+      },
+      "hgb_share": {
+        "rows": 90,
+        "solar_mae_mwh": 153.40315989374145,
+        "combined_source_mae_mwh": 1748.8896865580439,
+        "solar_active_days": 43,
+        "predicted_solar_share_of_mwh": 0.05316959854662014,
+        "actual_solar_share_of_mwh": 0.0906120591614607
+      },
+      "logistic_share": {
+        "rows": 90,
+        "solar_mae_mwh": 171.5310781460254,
+        "combined_source_mae_mwh": 1762.868269613018,
+        "solar_active_days": 43,
+        "predicted_solar_share_of_mwh": 0.03743225462908013,
+        "actual_solar_share_of_mwh": 0.0906120591614607
+      }
+    },
+    "2026Q2": {
+      "training_monthly_share": {
+        "rows": 91,
+        "solar_mae_mwh": 437.0164675195942,
+        "combined_source_mae_mwh": 2240.6234800486727,
+        "solar_active_days": 50,
+        "predicted_solar_share_of_mwh": 0.11929397054064811,
+        "actual_solar_share_of_mwh": 0.21107370885929713
+      },
+      "wind_only": {
+        "rows": 91,
+        "solar_mae_mwh": 635.7194065934066,
+        "combined_source_mae_mwh": 2552.7767986000604,
+        "solar_active_days": 50,
+        "predicted_solar_share_of_mwh": 0.0,
+        "actual_solar_share_of_mwh": 0.21107370885929713
+      },
+      "hgb_share": {
+        "rows": 91,
+        "solar_mae_mwh": 442.30918333025426,
+        "combined_source_mae_mwh": 2253.8078052246374,
+        "solar_active_days": 50,
+        "predicted_solar_share_of_mwh": 0.10681556273437601,
+        "actual_solar_share_of_mwh": 0.21107370885929713
+      },
+      "logistic_share": {
+        "rows": 91,
+        "solar_mae_mwh": 428.3199368369904,
+        "combined_source_mae_mwh": 2241.891465192669,
+        "solar_active_days": 50,
+        "predicted_solar_share_of_mwh": 0.11347182017086246,
+        "actual_solar_share_of_mwh": 0.21107370885929713
+      }
+    },
+    "2026Q3": {
+      "training_monthly_share": {
+        "rows": 61,
+        "solar_mae_mwh": 434.354611629395,
+        "combined_source_mae_mwh": 1282.6252261181394,
+        "solar_active_days": 24,
+        "predicted_solar_share_of_mwh": 0.19311661366464386,
+        "actual_solar_share_of_mwh": 0.33876136628582176
+      },
+      "wind_only": {
+        "rows": 61,
+        "solar_mae_mwh": 504.1062131147541,
+        "combined_source_mae_mwh": 1437.2371511902159,
+        "solar_active_days": 24,
+        "predicted_solar_share_of_mwh": 0.0,
+        "actual_solar_share_of_mwh": 0.33876136628582176
+      },
+      "hgb_share": {
+        "rows": 61,
+        "solar_mae_mwh": 451.3594391182216,
+        "combined_source_mae_mwh": 1275.040434191998,
+        "solar_active_days": 24,
+        "predicted_solar_share_of_mwh": 0.22393737589174095,
+        "actual_solar_share_of_mwh": 0.33876136628582176
+      },
+      "logistic_share": {
+        "rows": 61,
+        "solar_mae_mwh": 424.4877056923108,
+        "combined_source_mae_mwh": 1277.1153817225613,
+        "solar_active_days": 24,
+        "predicted_solar_share_of_mwh": 0.21362485803812334,
+        "actual_solar_share_of_mwh": 0.33876136628582176
+      }
+    }
+  },
+  "test_oracle_total_diagnostic": {
+    "notice": "Allocates the ACTUAL daily total, which is unknown at issue time. Isolates share skill only; never a serving score.",
+    "scores": {
+      "wind_only": {
+        "rows": 242,
+        "wind_mae_mwh": 438.8556611570248,
+        "solar_mae_mwh": 438.85566115702477,
+        "combined_source_mae_mwh": 877.7113223140497,
+        "wind_bias_mwh": 438.8556611570248,
+        "solar_bias_mwh": -438.85566115702477,
+        "max_conservation_error_mwh": 0.0,
+        "curtailment_positive_days": 118,
+        "curtailment_positive_combined_source_mae_mwh": 1800.052033898305,
+        "solar_active_days": 117,
+        "solar_active_solar_mae_mwh": 907.718547008547,
+        "predicted_solar_share_of_mwh": 0.0,
+        "actual_solar_share_of_mwh": 0.18995075411497855
+      },
+      "training_global_share": {
+        "rows": 242,
+        "wind_mae_mwh": 269.0471851566519,
+        "solar_mae_mwh": 269.0471851566519,
+        "combined_source_mae_mwh": 538.0943703133038,
+        "wind_bias_mwh": 212.72124480558404,
+        "solar_bias_mwh": -212.72124480558404,
+        "max_conservation_error_mwh": 0.0,
+        "curtailment_positive_days": 118,
+        "curtailment_positive_combined_source_mae_mwh": 1103.5494713205042,
+        "solar_active_days": 117,
+        "solar_active_solar_mae_mwh": 556.4866180411227,
+        "predicted_solar_share_of_mwh": 0.09787820169405859,
+        "actual_solar_share_of_mwh": 0.18995075411497855
+      },
+      "training_monthly_share": {
+        "rows": 242,
+        "wind_mae_mwh": 223.61107973491895,
+        "solar_mae_mwh": 223.6110797349189,
+        "combined_source_mae_mwh": 447.22215946983783,
+        "wind_bias_mwh": 153.91335475330374,
+        "solar_bias_mwh": -153.91335475330374,
+        "max_conservation_error_mwh": 0.0,
+        "curtailment_positive_days": 118,
+        "curtailment_positive_combined_source_mae_mwh": 917.1844287432265,
+        "solar_active_days": 117,
+        "solar_active_solar_mae_mwh": 462.5091563316729,
+        "predicted_solar_share_of_mwh": 0.12333213575951092,
+        "actual_solar_share_of_mwh": 0.18995075411497855
+      },
+      "hgb_share": {
+        "rows": 242,
+        "wind_mae_mwh": 215.52863011015577,
+        "solar_mae_mwh": 215.52863011015577,
+        "combined_source_mae_mwh": 431.05726022031155,
+        "wind_bias_mwh": 186.60440837116565,
+        "solar_bias_mwh": -186.60440837116568,
+        "max_conservation_error_mwh": 0.0,
+        "curtailment_positive_days": 118,
+        "curtailment_positive_combined_source_mae_mwh": 884.0326862145374,
+        "solar_active_days": 117,
+        "solar_active_solar_mae_mwh": 445.7929567317635,
+        "predicted_solar_share_of_mwh": 0.10918240308623404,
+        "actual_solar_share_of_mwh": 0.18995075411497855
+      },
+      "logistic_share": {
+        "rows": 242,
+        "wind_mae_mwh": 199.46963288501738,
+        "solar_mae_mwh": 199.46963288501732,
+        "combined_source_mae_mwh": 398.93926577003464,
+        "wind_bias_mwh": 181.74875599076353,
+        "solar_bias_mwh": -181.74875599076353,
+        "max_conservation_error_mwh": 0.0,
+        "curtailment_positive_days": 118,
+        "curtailment_positive_combined_source_mae_mwh": 818.1635789521052,
+        "solar_active_days": 117,
+        "solar_active_solar_mae_mwh": 412.5753268544059,
+        "predicted_solar_share_of_mwh": 0.1112840846025346,
+        "actual_solar_share_of_mwh": 0.18995075411497855
+      },
+      "direct_source_regressors": {
+        "rows": 242,
+        "wind_mae_mwh": 275.4940457859609,
+        "solar_mae_mwh": 275.4940457859609,
+        "combined_source_mae_mwh": 550.9880915719218,
+        "wind_bias_mwh": 191.95534532415698,
+        "solar_bias_mwh": -191.95534532415698,
+        "max_conservation_error_mwh": 5.684341886080802e-14,
+        "curtailment_positive_days": 118,
+        "curtailment_positive_combined_source_mae_mwh": 1129.992526783094,
+        "solar_active_days": 117,
+        "solar_active_solar_mae_mwh": 569.8194936800804,
+        "predicted_solar_share_of_mwh": 0.10686634657972192,
+        "actual_solar_share_of_mwh": 0.18995075411497855
+      }
+    }
+  },
+  "release_gate": {
+    "rule": "Pass only if a learned allocator is selected on 2025 validation, beats the best test baseline's combined source MAE on the 2026 end-to-end test, stays within 1.05x that baseline's solar-active solar MAE, and conserves the parent total.",
+    "selected_candidate_is_learned": false,
+    "best_test_baseline": "training_monthly_share",
+    "beats_best_baseline": false,
+    "solar_active_not_materially_worse": false,
+    "conserves_parent_total": true,
+    "labels_reconcile": true,
+    "passed": false
+  },
+  "limitations": [
+    "The parent's daily total error (about 1,600-1,700 MWh MAE) dominates source error; allocation choice changes end-to-end error by under 10%.",
+    "Solar's share of curtailment grew from about 6% (2024 train) to 13% (2025) and 19% (2026 test); models fitted on past years under-allocate solar.",
+    "V2 features start 2024-04-01, so only 275 training days precede the 2025 validation year.",
+    "V1 half-hour allocation was not attempted: its model-ready table covers January 2026 only, with little solar curtailment."
+  ]
+}
