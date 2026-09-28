@@ -186,6 +186,18 @@ def _slices(frame: pd.DataFrame, total: np.ndarray, shares: dict[str, np.ndarray
     return result
 
 
+def _rounded(value: object) -> object:
+    """Round floats so parallel-tree summation noise cannot change the report."""
+
+    if isinstance(value, float):
+        return round(value, 6)
+    if isinstance(value, dict):
+        return {key: _rounded(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_rounded(item) for item in value]
+    return value
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -281,6 +293,7 @@ def evaluate(
             "V1 half-hour allocation was not attempted: its model-ready table covers January 2026 only, with little solar curtailment.",
         ],
     }
+    report = _rounded(report)
     if report_path is not None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")

@@ -1,6 +1,9 @@
 # Handoff: predict curtailment by renewable source
 
-**Status:** research and implementation plan only. This branch does not train a source-allocation model, change V1/V2 predictions, add an API route, or deploy anything. The next agent should keep this PR separate from a release until the evidence gates below pass.
+**Status (updated 2026-09-28):** Step 2 source labels are built and reconciled. Steps 3-5 were run for
+the daily V2 model: **the release gate failed**, so no source-prediction route, serving artifact, or
+V1 half-hour allocator was added. See [Results](#results-2026-09-28) at the end of this page. The
+original plan below is kept unchanged for the next attempt.
 
 ## Goal and meaning
 
@@ -103,3 +106,72 @@ Each new response should include the parent target and horizon/day, parent predi
 ## Handoff boundary
 
 This documentation PR records the investigation and exact implementation path; it is **not** the source-allocation implementation. The next agent should begin with Step 2's multi-year raw-label reconciliation and post its results before choosing model complexity. Do not merge an unvalidated source model into `release/shareable-prediction-api` merely because it produces numbers that add up.
+
+
+## Results (2026-09-28)
+
+### Step 2: audited source labels — passed
+
+`python scripts/build_source_curtailment_labels.py` (module `src/gridtoev/source_curtailment.py`)
+reuses the checksum-verified catalog downloads and writes:
+
+- `data/processed/eirgrid_source_curtailment_30min.csv.gz`: 99,310 contiguous UTC half-hours,
+  2021-01-01 to 2026-08-31, Wind/Solar curtailment plus constraint and dispatch-down diagnostics;
+- `data/processed/eirgrid_source_curtailment_daily.csv`: 1,248 complete UTC days (2023-04-01 to 2026-08-30);
+- `data/processed/eirgrid_source_curtailment_quality_report.json` and
+  `data/processed/eirgrid_source_curtailment_data_dictionary.csv`.
+
+The raw checks reject duplicate raw keys (instead of the shared normaliser's silent sum), IE
+technologies other than Wind/Solar, and negative or non-finite labels. No violations were found. IE
+has only `Wind` and `Solar`, so no `other_or_unattributed_mwh` field is needed. IE Solar is first
+published at **2023-03-31T23:00Z** (01 April local); earlier intervals are missing and stay NaN, not zero.
+The 2023-03-31 partial-solar day is excluded from daily labels.
+
+| Check | Result |
+| --- | --- |
+| Complete half-hours: Wind + Solar vs core `curtailment_mwh` | 59,952 rows, max difference 2.3e-13 MWh |
+| Wind-only half-hours (pre-solar) vs core total | 39,358 rows, max difference 5.7e-14 MWh |
+| Daily Wind + Solar vs every V2 label day | 882 of 882 days, max difference 3.6e-12 MWh |
+
+Solar's share of IE curtailment MWh: 2.1% (2023 from April), 4.9% (2024), 12.7% (2025), 19.1% (2026 to August).
+
+### Steps 3-5: V2 daily allocation — release gate failed
+
+`python scripts/evaluate_daily_source_allocation.py` (module `src/gridtoev/source_allocation.py`) writes
+`benchmarks/daily_source_allocation_v2/evaluation.json`. It uses V2's own feature contract and
+partitions: train 2024-04..12 (275 days), select on 2025 (365), test 2026-01..08 (242). Parent totals
+are out-of-sample: a train-only refit of the V2 recipe for 2025 and the saved V2 artifact (trained
+through 2025-12-31) for 2026. Every candidate uses the conserving equation in step 4 and was fixed
+before the 2026 score.
+
+| 2026 end-to-end test (MWh/day) | Combined source MAE | Solar MAE | Solar MAE, solar-active days |
+| --- | ---: | ---: | ---: |
+| Wind-only baseline | 1,989.1 | 438.9 | 907.7 |
+| Training-only global share | 1,860.4 | 374.1 | 712.4 |
+| **Training-only monthly share (selected on 2025)** | 1,820.6 | 329.7 | 633.1 |
+| Gradient-boosted share | 1,819.3 | 337.1 | 649.6 |
+| MWh-weighted logistic share | 1,820.6 | 331.9 | 637.7 |
+| Direct Wind/Solar regressors, reconciled | 1,851.2 | 346.8 | 669.7 |
+
+Gate outcome: the 2025 selection picked a baseline, and no learned allocator beats the monthly-share
+baseline on 2026 by a meaningful margin (the best is 0.07% lower on combined MAE and 2.6% *worse* on
+solar-active days). The status is therefore `experimental_estimate_only`, and a test asserts that
+`/predict/v1/curtailment/sources` and `/predict/curtailment/sources/day` remain unregistered.
+
+Why it failed, for the next attempt:
+
+1. **The parent total error dominates.** V2's daily MAE is about 1,720 MWh on 2026, so allocation
+   changes end-to-end source error by at most about 8%. Given the actual total (a diagnostic only, never a
+   serving score), the logistic share cuts 2026 solar MAE from 224 to 200 MWh against the
+   monthly baseline. Share skill exists but is lost inside the parent's error.
+2. **Non-stationary solar share.** The share of solar in curtailment roughly doubles each year. All candidates predicted
+   8-11% solar in 2026 against an actual 19%. Tree models cannot extrapolate this. A capacity-aware,
+   issue-time-available feature (for example, installed solar MW or the previous month's published share,
+   with EirGrid's publication lag checked) is the most promising next candidate.
+3. **Short history.** V2 archived forecasts start 2024-04-01, leaving 275 training days.
+4. **V1 was not attempted.** Its model-ready table covers January 2026 only, when solar
+   curtailment is minimal, so there are too few matched issue-time rows.
+
+Because the 2026 holdout has now been viewed, any new candidate should be selected on 2025 and confirmed on
+data published after 2026-08-31 before any route is exposed. Existing endpoints, schemas, and the V1/V2
+artifacts are unchanged; the full existing test suite still passes.

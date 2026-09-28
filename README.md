@@ -7,7 +7,9 @@ V2 separately forecasts curtailment probability and total MWh for a full UTC day
 For a proposed wind/solar breakdown of predicted curtailment, see the
 [source-curtailment attribution handoff](docs/SOURCE_CURTAILMENT_ATTRIBUTION_HANDOFF.md).
 It documents verified raw EirGrid labels, the leakage-safe implementation sequence, and release
-gates. No source-allocation model is trained or served by that documentation PR.
+gates. Audited Wind/Solar labels are built by `scripts/build_source_curtailment_labels.py`; the daily
+allocation experiment (`scripts/evaluate_daily_source_allocation.py`) did not pass its release gate, so no
+source-allocation model or route is served.
 
 The notebooks are:
 
