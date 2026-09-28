@@ -3,8 +3,10 @@
 **Status (updated 2026-09-28):** Step 2 source labels are built and reconciled. Experiment 1
 (standard allocators) **failed** its release gate. Experiment 2 (a capacity-aware physics share) was
 selected on 2025 and beat every baseline on 2026, but is **awaiting confirmation on fresh
-post-2026-08-30 data**, so no source *prediction* route is served. Recorded Wind/Solar outcomes are
-now available through two new read-only routes; see the plain-English
+post-2026-08-30 data**. By the repository owner's decision (2026-09-28) it is **served as an explicitly
+experimental forecast** (`POST /predict/curtailment/sources/day`), so live use becomes the unbiased
+prospective test. This is a deliberate exception to step 6's "only after the gate" rule. Recorded Wind/Solar
+outcomes are available through two new read-only routes. See the plain-English
 [source curtailment API guide](SOURCE_CURTAILMENT_API.md). See [Results](#results-2026-09-28) at the
 end of this page. The original plan below is kept unchanged.
 
@@ -214,8 +216,19 @@ experiment 1 and in research, so the gate also requires **at least 60 fresh labe
 1. When EirGrid publishes workbooks beyond August 2026, update the catalog and rerun
    `scripts/build_extended_data.py`, `scripts/build_daily_curtailment_data.py` (extending the V2
    dataset only; do not retrain V2), and `scripts/build_source_curtailment_labels.py`.
-2. Rerun `scripts/evaluate_daily_source_allocation.py`. Only if `release_gate.passed` becomes `true`,
-   add `POST /predict/curtailment/sources/day` as a new route, per step 6.
+2. Rerun `scripts/evaluate_daily_source_allocation.py --confirmation-dataset <extended file>`. Build that
+   file with `build_daily_curtailment_data.py --output` to a **separate** path, because the live V2
+   model verifies its frozen dataset checksum.
+
+**Owner decision: live as experimental.** `POST /predict/curtailment/sources/day` and
+`GET /model-info/curtailment/sources` are served now, clearly marked `experimental: true` with
+`validation_status`. The two parameters are frozen in `models/v2/source_allocation_physics.json`
+(fitted on 2024-04-01 to 2025-12-31, SHA-256 pinned in the report and verified at startup), so
+every day from 2026-08-31 is predicted before its outcome exists. The confirmation gate then scores
+those days with the identical frozen model. Served predictions are also logged (`source_split_prediction`)
+for audit. If confirmation fails, set `GRIDTOEV_SOURCE_SPLIT_ENABLED=0`; V1 and V2 are unaffected. The route
+needs capacity data through month M-2, so the bundled archive (to 2026-08-31) serves target days up to
+2026-10-31; later days return 422 until the archive is refreshed. No V1 split route exists.
 
 Remaining limits: the parent total error still dominates, the share is a daily average, and the proxy
 uses observed availability rather than official installed capacity.
@@ -227,4 +240,5 @@ and `GET /actuals/curtailment/sources/coverage` serve the audited label archive,
 observed outcomes. They return wind, solar, total, percentage shares and a one-sentence summary.
 Pre-April-2023 days return `solar_not_published` with solar `null`, never zero. A regression test
 compares SHA-256 hashes of all 30 pre-existing OpenAPI operations, 52 schemas and the API description
-against a snapshot taken before the change; only these two operations were added.
+against a snapshot taken before the change. Only four operations were added: these two plus the two
+experimental split routes.

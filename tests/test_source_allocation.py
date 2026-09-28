@@ -26,7 +26,6 @@ PHYSICS_COLUMNS = [
     "solar_capacity_proxy_mw", "wind_capacity_proxy_mw", "capacity_proxy_through_utc",
     "solar_energy_proxy_mwh", "wind_energy_proxy_mwh", "physics_log_ratio",
 ]
-SOURCE_ROUTES = {"/predict/v1/curtailment/sources", "/predict/curtailment/sources/day"}
 
 
 class AllocationTests(unittest.TestCase):
@@ -99,13 +98,15 @@ class AllocationReportTests(unittest.TestCase):
             self.assertLess(self.report["test_end_to_end"][name]["max_conservation_error_mwh"], 1e-6)
         self.assertTrue(set(BASELINES) <= set(CANDIDATES))
 
-    def test_unvalidated_source_routes_stay_unavailable(self) -> None:
+    def test_failed_experiment_is_not_served_and_only_the_physics_split_is_live(self) -> None:
         gate = self.report["release_gate"]
         self.assertFalse(gate["passed"])
         self.assertEqual(self.report["status"], "experimental_estimate_only")
         paths = {route.path for route in create_app().routes}
-        # The handoff forbids serving an allocator that has not passed its gate.
-        self.assertFalse(SOURCE_ROUTES & paths)
+        # Experiment 1's allocators are never served; V1 has no split route.
+        self.assertNotIn("/predict/v1/curtailment/sources", paths)
+        # The V2 split is live only as the experimental physics model (owner decision).
+        self.assertIn("/predict/curtailment/sources/day", paths)
 
 
 class PhysicsExperimentTests(unittest.TestCase):

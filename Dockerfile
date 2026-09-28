@@ -23,6 +23,8 @@ RUN python -m pip install --no-cache-dir . \
 COPY --chown=gridtoev:gridtoev models/gridtoev_model_bundle.joblib ./models/gridtoev_model_bundle.joblib
 COPY --chown=gridtoev:gridtoev models/v2/daily_curtailment_bundle.joblib ./models/v2/daily_curtailment_bundle.joblib
 COPY --chown=gridtoev:gridtoev benchmarks/daily_curtailment_v2/evaluation.json ./benchmarks/daily_curtailment_v2/evaluation.json
+COPY --chown=gridtoev:gridtoev models/v2/source_allocation_physics.json ./models/v2/source_allocation_physics.json
+COPY --chown=gridtoev:gridtoev benchmarks/daily_source_allocation_v2/physics_evaluation.json ./benchmarks/daily_source_allocation_v2/physics_evaluation.json
 COPY --chown=gridtoev:gridtoev data/processed/gridtoev_model_ready.csv ./data/processed/gridtoev_model_ready.csv
 COPY --chown=gridtoev:gridtoev data/processed/daily_curtailment_forecast_v2.csv.gz ./data/processed/daily_curtailment_forecast_v2.csv.gz
 COPY --chown=gridtoev:gridtoev data/processed/eirgrid_core_history_30min.csv.gz ./data/processed/eirgrid_core_history_30min.csv.gz

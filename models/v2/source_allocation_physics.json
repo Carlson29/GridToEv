@@ -1,0 +1,19 @@
+{
+  "model_version": "2.0.0-sources-experimental",
+  "candidate": "physics_share",
+  "parent_model_version": "2.0.0-daily-experimental",
+  "fitted_on": [
+    "2024-04-01",
+    "2025-12-31"
+  ],
+  "intercept": -0.006300965543418819,
+  "slope": 0.6318734222411123,
+  "fixed_constants": {
+    "capacity_publication_months": 2,
+    "capacity_window_days": 365,
+    "wind_cut_in_ms": 3.0,
+    "wind_rated_ms": 12.0,
+    "wind_curve_exponent": 1.5
+  },
+  "parent_artifact_sha256": "6b2bcf6c3a3cff265bbfb581071e3bb4749d1459d7326909971d5cb5ea97d2de"
+}

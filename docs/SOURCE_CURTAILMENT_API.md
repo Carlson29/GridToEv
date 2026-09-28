@@ -1,5 +1,8 @@
 # Wind and solar curtailment: plain-English guide
 
+This guide covers four endpoints: two that show **recorded** wind/solar curtailment for past days,
+and two for an **experimental forecast** of the wind/solar split.
+
 ## What is curtailment?
 
 On windy or sunny days, Ireland's wind farms and solar farms can sometimes produce more electricity
@@ -11,7 +14,7 @@ typical electric cars.
 GridToEV's goal is to find those times, so that flexible demand such as EV charging can soak up
 power that would otherwise be wasted.
 
-## What these endpoints do
+## Recorded wind/solar curtailment (past days)
 
 Two new, read-only endpoints show **how much curtailment really happened on a past day, and how
 much of it was wind versus solar**. The figures come from EirGrid's published half-hourly records.
@@ -114,24 +117,110 @@ print(day["summary"])
 Other errors: `401` means the API key is missing or wrong; `422` means the date is not in
 `YYYY-MM-DD` form; `503` means the server could not read its data file.
 
-## Why is there no *forecast* of wind versus solar yet?
+## Experimental forecast: wind vs solar for a day
 
-The API already forecasts **total** daily curtailment (the experimental V2 model). Splitting that
-forecast into wind and solar was tested in two experiments:
+The two routes above show what **happened**. These two **forecast** what will happen:
 
-1. **Standard machine-learning models** did no better than simply using last year's average
-   monthly split, so they were rejected.
-2. **A physics-based method** estimates each source's likely output from the weather forecast (wind
-   speed and sunshine) scaled by how much wind and solar capacity is installed. EirGrid tends to cut
-   sources in proportion to what they can produce, so this is a natural fit. It beat every
-   alternative on 2025 and 2026 data. It is still **off** because the team had already looked at the
-   2026 data while designing it, so it must also pass on newer days (at least 60 days from 31 August
-   2026) before release.
+| Endpoint | In one sentence |
+| --- | --- |
+| `POST /predict/curtailment/sources/day` | "For this day, how much curtailment is expected, and how much of it from wind versus solar?" |
+| `GET /model-info/curtailment/sources` | "How does the forecast work, which dates can I ask for, and how accurate is it so far?" |
 
-The detailed numbers are in `benchmarks/daily_source_allocation_v2/` and in
-`docs/SOURCE_CURTAILMENT_ATTRIBUTION_HANDOFF.md`. When the physics method passes, it will get its own
-new forecast endpoint. These record endpoints will stay the same, so you can compare the forecast with
-what really happened.
+They are labelled **experimental** (every response says `"experimental": true`). They need the V2
+daily model to be switched on, which it is on the live service.
+
+### How it works, in plain words
+
+1. The V2 model predicts how much renewable power will be curtailed over the whole day.
+2. EirGrid tends to cut wind and solar farms **in proportion to how much each could produce**.
+   So the forecast looks at that day's weather forecast (wind speed and sunshine) and at how much
+   wind and solar capacity is installed in Ireland.
+3. It turns that into a percentage split and applies it to V2's total. Wind + solar always equals
+   V2's total exactly.
+
+### How to call it
+
+Send the day you want as `target_date_utc` (`YYYY-MM-DD`, UTC). Any day from 2024-04-01 up to today
+works. Nothing else is needed: the server fetches the archived day-ahead weather forecast itself.
+
+```powershell
+$body = @{ target_date_utc = "2026-09-15" } | ConvertTo-Json
+Invoke-RestMethod -Uri "$base/predict/curtailment/sources/day" -Method Post -ContentType "application/json" -Body $body -Headers $headers
+```
+
+Example response (real, shortened):
+
+```json
+{
+  "experimental": true,
+  "validation_status": "candidate_awaiting_fresh_confirmation",
+  "target_date_utc": "2026-09-15",
+  "curtailment_event_probability": 0.9616,
+  "predicted_curtailment_mwh": 5988.848,
+  "predicted_wind_curtailment_mwh": 4927.074,
+  "predicted_solar_curtailment_mwh": 1061.774,
+  "predicted_wind_share_percent": 82.27,
+  "predicted_solar_share_percent": 17.73,
+  "capacity_proxy": { "solar_mw": 1321.745, "wind_mw": 4346.66, "published_data_through_utc": "2026-07-31" },
+  "summary": "For 2026-09-15 (UTC), V2 predicts 5,988.8 MWh of curtailment. This experimental model expects about 82% of it from wind (4,927.1 MWh) and 18% from solar (1,061.8 MWh).",
+  "compare_with_actual": "/actuals/curtailment/sources?target_date_utc=2026-09-15"
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `predicted_curtailment_mwh` | V2's forecast of the day's total wasted renewable power. Same as `/predict/curtailment/day`. |
+| `predicted_wind_curtailment_mwh` / `predicted_solar_curtailment_mwh` | The expected wind and solar parts. |
+| `predicted_wind_share_percent` / `predicted_solar_share_percent` | The same split as percentages. |
+| `capacity_proxy` | The installed-capacity estimates used, and the last day of EirGrid data they came from. |
+| `compare_with_actual` | After EirGrid publishes the day, call this to see what really happened. |
+| `validation_status` | How far the unbiased check has got (see below). |
+
+Errors: `422` for a future date, a date before 2024-04-01, a day with missing forecast hours, or a
+date beyond the bundled capacity data (the message says what to refresh). `503` if V2 or the weather
+provider is unavailable. `401` for a missing or wrong API key.
+
+### Why you can trust that it does not cheat
+
+- **No future information.** The weather inputs are forecasts made the day before. The capacity
+  estimate only uses EirGrid months that were already published (always at least one full month
+  before the target day). Actual curtailment is never an input.
+- **Frozen model.** The forecast has only two fitted numbers, fitted once on 2024-2025 data and
+  stored with a checksum. The server refuses to start the forecast if the file was changed.
+
+### Why it is still called experimental
+
+While designing this method, its designers had already seen 2026 results, so the 2026 accuracy
+figures (about 2% better overall and 9% better on sunny curtailment days than the best simple
+alternative) may be a little optimistic. The honest fix is to test it on **days that did not exist
+yet** when it was designed. Every day from 31 August 2026 onward is such a day: its forecast is fixed
+before its outcome exists, so nobody can bias it.
+
+`GET /model-info/curtailment/sources` shows the current check under `validation.fresh_confirmation`.
+Once EirGrid has published at least 60 such days (expected around late November 2026), rerun:
+
+```powershell
+python scripts/build_extended_data.py --forecast-days 3
+python scripts/build_source_curtailment_labels.py
+python scripts/build_daily_curtailment_data.py --end 2026-12-31 --output data/processed/daily_curtailment_confirmation_v2.csv.gz
+python scripts/evaluate_daily_source_allocation.py --confirmation-dataset data/processed/daily_curtailment_confirmation_v2.csv.gz
+```
+
+Use a **separate** `--output` file for the extended daily dataset: the live V2 model checks the
+checksum of its own frozen dataset and would refuse to start if it were overwritten. Set `--end` to the
+last day EirGrid has published. These commands rebuild the data, but they **do not retrain** V2 or the split: both stay frozen, so the new days
+remain a fair test. If the check passes, `validation_status` becomes `passed_release_gate` and the
+experimental label can be removed. If it fails, switch the forecast off by setting
+`GRIDTOEV_SOURCE_SPLIT_ENABLED=0`; nothing else is affected. Each served forecast is also written to the
+server log (`source_split_prediction ...`), so what was actually served can be compared with the outcomes.
+
+### Limits
+
+- The split is only as good as V2's total, which can be off by thousands of MWh on a single day.
+- It is a whole-day split; it does not say which hours were curtailed.
+- The bundled capacity data ends on 2026-08-31, which covers target days up to **2026-10-31**. Later
+  days return a clear 422 until the EirGrid archive is refreshed and redeployed.
+- It is a planning estimate, not a dispatch instruction.
 
 ## Where the data comes from
 

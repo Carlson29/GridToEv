@@ -475,5 +475,7 @@
     "The parent's daily total error still dominates; allocation improves Wind/Solar error but cannot fix a wrong total.",
     "The capacity proxy uses observed availability, not official installed capacity, and assumes EirGrid's monthly publication cadence holds.",
     "The share is a daily average; it does not describe which half-hours were curtailed."
-  ]
+  ],
+  "serving_artifact": "models/v2/source_allocation_physics.json",
+  "serving_artifact_sha256": "4565b116f90a8d193611db0a3381fe053fd08300a02afdff1cc7122886113406"
 }

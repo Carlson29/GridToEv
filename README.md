@@ -9,9 +9,9 @@ For a proposed wind/solar breakdown of predicted curtailment, see the
 It documents verified raw EirGrid labels, the leakage-safe implementation sequence, and release
 gates. Audited Wind/Solar labels are built by `scripts/build_source_curtailment_labels.py`. Recorded
 wind/solar curtailment for any past day is served by `GET /actuals/curtailment/sources` (plain-English
-guide: [`docs/SOURCE_CURTAILMENT_API.md`](docs/SOURCE_CURTAILMENT_API.md)). A physics-based wind/solar
-*forecast* split passed its tests on 2025-2026 data but stays off until it is confirmed on newer
-data (`scripts/evaluate_daily_source_allocation.py`).
+guide: [`docs/SOURCE_CURTAILMENT_API.md`](docs/SOURCE_CURTAILMENT_API.md)). An **experimental**
+wind/solar split of V2's daily forecast is served at `POST /predict/curtailment/sources/day` while it is
+confirmed on new days (`scripts/evaluate_daily_source_allocation.py`).
 
 The notebooks are:
 

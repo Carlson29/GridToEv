@@ -45,6 +45,8 @@ SOLAR_ACTIVE_TOLERANCE = 1.05
 # the experiment was scored and must not be tuned against its results.
 PHYSICS_REPORT = PROJECT_ROOT / "benchmarks" / "daily_source_allocation_v2" / "physics_evaluation.json"
 PHYSICS_CANDIDATE = "physics_share"
+PHYSICS_ARTIFACT = PROJECT_ROOT / "models" / "v2" / "source_allocation_physics.json"
+PHYSICS_MODEL_VERSION = "2.0.0-sources-experimental"
 DEFAULT_HISTORY = PROJECT_ROOT / "data" / "processed" / "eirgrid_core_history_30min.csv.gz"
 # EirGrid system workbooks are republished monthly (for example V8, covering
 # data through 31 August, was retrieved on 23 September). Month M-2 is therefore
@@ -387,6 +389,7 @@ def evaluate_physics(
     artifact_path: Path = daily_model.DEFAULT_ARTIFACT,
     history_path: Path = DEFAULT_HISTORY,
     report_path: Path | None = PHYSICS_REPORT,
+    serving_artifact_path: Path = PHYSICS_ARTIFACT,
 ) -> dict:
     """Experiment 2: add the capacity-aware physics share and require fresh confirmation.
 
@@ -534,6 +537,25 @@ def evaluate_physics(
     }
     report = _rounded(report)
     if report_path is not None:
+        # Frozen serving parameters: fitted on 2024-2025 only, so reruns that add
+        # confirmation days reproduce this exact file and cannot peek at them.
+        artifact = {
+            "model_version": PHYSICS_MODEL_VERSION,
+            "candidate": PHYSICS_CANDIDATE,
+            "parent_model_version": "2.0.0-daily-experimental",
+            "fitted_on": [
+                development["issue_timestamp_utc"].min().date().isoformat(),
+                development["issue_timestamp_utc"].max().date().isoformat(),
+            ],
+            "intercept": float(physics_model.intercept_[0]),
+            "slope": float(physics_model.coef_[0][0]),
+            "fixed_constants": report["physics_candidate"]["fixed_constants"],
+            "parent_artifact_sha256": report["inputs"]["parent_artifact_sha256"],
+        }
+        serving_artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        serving_artifact_path.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+        report["serving_artifact"] = serving_artifact_path.relative_to(PROJECT_ROOT).as_posix()             if serving_artifact_path.is_relative_to(PROJECT_ROOT) else serving_artifact_path.name
+        report["serving_artifact_sha256"] = _sha256(serving_artifact_path)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report

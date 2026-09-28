@@ -19,7 +19,12 @@ from gridtoev.source_actuals import SourceActualsService
 
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = ROOT / "tests" / "fixtures" / "openapi_existing_routes.sha256.json"
-NEW_OPERATIONS = {"GET /actuals/curtailment/sources", "GET /actuals/curtailment/sources/coverage"}
+NEW_OPERATIONS = {
+    "GET /actuals/curtailment/sources",
+    "GET /actuals/curtailment/sources/coverage",
+    "POST /predict/curtailment/sources/day",
+    "GET /model-info/curtailment/sources",
+}
 
 
 def _archive(path: Path) -> None:
@@ -134,6 +139,9 @@ class SourceActualsDeploymentTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn(f"COPY --chown=gridtoev:gridtoev {archive} ./{archive}", dockerfile)
         self.assertIn(f"GRIDTOEV_SOURCE_ACTUALS_PATH=/app/{archive}", dockerfile)
+        for shipped in ("models/v2/source_allocation_physics.json", "benchmarks/daily_source_allocation_v2/physics_evaluation.json"):
+            self.assertIn(f"COPY --chown=gridtoev:gridtoev {shipped} ./{shipped}", dockerfile)
+        self.assertIn("!models/v2/source_allocation_physics.json", (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines())
 
 
 if __name__ == "__main__":
