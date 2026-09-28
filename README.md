@@ -7,9 +7,11 @@ V2 separately forecasts curtailment probability and total MWh for a full UTC day
 For a proposed wind/solar breakdown of predicted curtailment, see the
 [source-curtailment attribution handoff](docs/SOURCE_CURTAILMENT_ATTRIBUTION_HANDOFF.md).
 It documents verified raw EirGrid labels, the leakage-safe implementation sequence, and release
-gates. Audited Wind/Solar labels are built by `scripts/build_source_curtailment_labels.py`; the daily
-allocation experiment (`scripts/evaluate_daily_source_allocation.py`) did not pass its release gate, so no
-source-allocation model or route is served.
+gates. Audited Wind/Solar labels are built by `scripts/build_source_curtailment_labels.py`. Recorded
+wind/solar curtailment for any past day is served by `GET /actuals/curtailment/sources` (plain-English
+guide: [`docs/SOURCE_CURTAILMENT_API.md`](docs/SOURCE_CURTAILMENT_API.md)). A physics-based wind/solar
+*forecast* split passed its tests on 2025-2026 data but stays off until it is confirmed on newer
+data (`scripts/evaluate_daily_source_allocation.py`).
 
 The notebooks are:
 

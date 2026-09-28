@@ -1,9 +1,12 @@
 # Handoff: predict curtailment by renewable source
 
-**Status (updated 2026-09-28):** Step 2 source labels are built and reconciled. Steps 3-5 were run for
-the daily V2 model: **the release gate failed**, so no source-prediction route, serving artifact, or
-V1 half-hour allocator was added. See [Results](#results-2026-09-28) at the end of this page. The
-original plan below is kept unchanged for the next attempt.
+**Status (updated 2026-09-28):** Step 2 source labels are built and reconciled. Experiment 1
+(standard allocators) **failed** its release gate. Experiment 2 (a capacity-aware physics share) was
+selected on 2025 and beat every baseline on 2026, but is **awaiting confirmation on fresh
+post-2026-08-30 data**, so no source *prediction* route is served. Recorded Wind/Solar outcomes are
+now available through two new read-only routes; see the plain-English
+[source curtailment API guide](SOURCE_CURTAILMENT_API.md). See [Results](#results-2026-09-28) at the
+end of this page. The original plan below is kept unchanged.
 
 ## Goal and meaning
 
@@ -175,3 +178,53 @@ Why it failed, for the next attempt:
 Because the 2026 holdout has now been viewed, any new candidate should be selected on 2025 and confirmed on
 data published after 2026-08-31 before any route is exposed. Existing endpoints, schemas, and the V1/V2
 artifacts are unchanged; the full existing test suite still passes.
+
+### Experiment 2: capacity-aware physics share — awaiting fresh confirmation
+
+Research on the raw workbooks showed that EirGrid curtails roughly **in proportion to each source's
+available output**. Across 12,084 curtailed half-hours from 2023 to 2026, splitting the actual total by
+available-output share cut solar half-hour MAE from 22.7 to 8.0 MWh against a fixed share. Solar was
+curtailed at a somewhat higher rate than wind (a median of 16% vs 10% of available output). Experiment 2
+turns this into an issue-time forecast (`evaluate_physics` in `src/gridtoev/source_allocation.py`,
+report `benchmarks/daily_source_allocation_v2/physics_evaluation.json`):
+
+```text
+solar_energy = solar_capacity_proxy_mw * mean regional forecast irradiance (kWh/m2/day)
+wind_energy  = wind_capacity_proxy_mw * 24 * clip((v - 3) / (12 - 3), 0, 1) ** 1.5   (v = forecast 100 m m/s)
+p_wind       = logistic(intercept + slope * ln((wind_energy + 1) / (solar_energy + 1)))
+```
+
+The capacity proxy is the maximum IE availability over the 365 days ending on the last day of calendar
+month M-2 for an issue in month M. EirGrid republishes the system workbook monthly (V8, covering data
+through 31 August, was retrieved 23 September), so month M-2 is always public. A test enforces this rule.
+A full year always contains a summer peak, so the proxy tracks installed capacity rather than the season.
+All constants were fixed before scoring. Only the intercept and slope are fitted, on 2024-2025 data.
+
+| End-to-end, MWh/day | 2025 validation, combined | 2026 test, combined | 2026 solar-active solar MAE | 2026 predicted / actual solar share |
+| --- | ---: | ---: | ---: | ---: |
+| Training-only monthly share (best baseline) | 1,636.6 | 1,820.6 | 633.1 | 10.9% / 19.0% |
+| **Physics share (selected on 2025)** | **1,631.2** | **1,784.2** | **577.8** | 13.0% / 19.0% |
+
+Given the true total (a diagnostic, never a serving score), physics cuts 2026 solar MAE from 224 to
+126 MWh (-44%). It passes every 2026 gate criterion. However, the 2026 test had already been viewed in
+experiment 1 and in research, so the gate also requires **at least 60 fresh labelled days from
+2026-08-31**, scored with the model frozen on 2024-2025 data. The status is therefore
+`candidate_awaiting_fresh_confirmation`. To finish:
+
+1. When EirGrid publishes workbooks beyond August 2026, update the catalog and rerun
+   `scripts/build_extended_data.py`, `scripts/build_daily_curtailment_data.py` (extending the V2
+   dataset only; do not retrain V2), and `scripts/build_source_curtailment_labels.py`.
+2. Rerun `scripts/evaluate_daily_source_allocation.py`. Only if `release_gate.passed` becomes `true`,
+   add `POST /predict/curtailment/sources/day` as a new route, per step 6.
+
+Remaining limits: the parent total error still dominates, the share is a daily average, and the proxy
+uses observed availability rather than official installed capacity.
+
+### Recorded outcomes by source (new read-only routes)
+
+`GET /actuals/curtailment/sources?target_date_utc=YYYY-MM-DD` (optionally `&include_half_hours=true`)
+and `GET /actuals/curtailment/sources/coverage` serve the audited label archive, as step 6 permits for
+observed outcomes. They return wind, solar, total, percentage shares and a one-sentence summary.
+Pre-April-2023 days return `solar_not_published` with solar `null`, never zero. A regression test
+compares SHA-256 hashes of all 30 pre-existing OpenAPI operations, 52 schemas and the API description
+against a snapshot taken before the change; only these two operations were added.

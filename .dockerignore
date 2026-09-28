@@ -15,6 +15,7 @@ data/**
 !data/processed/gridtoev_model_ready.csv
 !data/processed/daily_curtailment_forecast_v2.csv.gz
 !data/processed/eirgrid_core_history_30min.csv.gz
+!data/processed/eirgrid_source_curtailment_30min.csv.gz
 models/**
 !models/gridtoev_model_bundle.joblib
 !models/v2/

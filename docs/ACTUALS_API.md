@@ -41,3 +41,6 @@ Invoke-RestMethod -Uri "$base/actuals/daily-curtailment/window" -Method Post -Co
 The bundled archive is a **snapshot**, currently ending at 2026-08-31 22:30 UTC, with complete daily labels through 2026-08-30. Later predictions will initially return `pending`. EirGrid actuals are published after the fact; to make a later outcome available, refresh `data/processed/eirgrid_core_history_30min.csv.gz` with the project's EirGrid history pipeline and redeploy the image. The service loads the archive lazily on first actuals lookup and does not auto-download or synthesize newer labels. `GRIDTOEV_ACTUALS_PATH` can select a different, verified archive; the Docker image includes the committed one.
 
 These routes do not change V1's model artifact or either model's prediction schema.
+
+Wind/solar split of observed curtailment: see [`SOURCE_CURTAILMENT_API.md`](SOURCE_CURTAILMENT_API.md)
+for the separate `GET /actuals/curtailment/sources` route. The routes above are unchanged.
