@@ -1,13 +1,49 @@
 # Model formula API
 
-GridToEv exposes the equations used to turn each model's fitted estimator outputs into an API prediction. These are **explanations of the deployed calculations**, not a second prediction interface. Use the prediction routes to obtain a forecast; use the formula routes to explain how its fields are produced.
+GridToEv exposes both the **actual fitted ML decision rules** and the equations used to turn their outputs into an API prediction. These are read-only explanations of the loaded artifact, not a second prediction interface. Use prediction routes to obtain a forecast. Neither model predicts an EV intervention's *extra* or *avoided* curtailment; that would require a separately validated counterfactual model.
 
-| Model | Formula route | Predicted target |
-| --- | --- | --- |
-| V1 | `GET /model-info/v1/formulas` | Renewable dispatch-down in one target **half-hour**, issued 30 or 60 minutes earlier. |
-| V2 | `GET /model-info/daily-curtailment/formulas` | Renewable **curtailment only** over one complete UTC day. |
+| Model | Serving formula | Fitted ML formula manifest | Predicted target |
+| --- | --- | --- | --- |
+| V1 | `GET /model-info/v1/formulas` | `GET /model-info/v1/fitted-formulas` | Renewable dispatch-down in one target **half-hour**, issued 30 or 60 minutes earlier. |
+| V2 | `GET /model-info/daily-curtailment/formulas` | `GET /model-info/daily-curtailment/fitted-formulas` | Renewable **curtailment only** over one complete UTC day. |
 
-Both routes take **no path parameters, query parameters or request body**. Send `X-API-Key` if the deployment requires it. V1 returns `200` when the model is loaded; V2 returns `503` if the optional daily model is disabled. The routes are discoverable through each model's `formulas_endpoint` in `GET /models/catalog` and `GET /models/about`. Keep the API key in your backend, not in browser JavaScript. The live API's base URL, once this change is deployed, is `https://gridtoev-api.onrender.com`.
+The four manifest/serving routes take **no path parameters, query parameters or request body**. Send `X-API-Key` if the deployment requires it. V1 returns `200` when loaded; V2 returns `503` if the optional daily model is disabled. All are linked in `GET /models/catalog` and `GET /models/about`. Keep the API key in your backend, not in browser JavaScript. The live API's base URL, once this change is deployed, is `https://gridtoev-api.onrender.com`.
+
+## Actual fitted ML formulas: variables, targets and numeric trees
+
+The `/fitted-formulas` manifests identify **every loaded classifier and regressor**. `input_features` lists the exact engineered variables and saved positions. `transformed_features` is the array addressed by each tree's `feature_index`; V1 first fills missing values with the listed fitted medians, while V2 rejects non-finite inputs. These are *not* the original EirGrid/ENTSO-E or hourly weather fields: use `raw_input_schema_endpoint` to understand the source inputs. For each estimator, `training_target` says what observed label it learned, `prediction_output` and `output_unit` say what its result means, `serving_role` says whether/how that result affects the API prediction, and `formula` gives the **actual loaded baseline, tree count, aggregation and inverse link**.
+
+One complete fitted tree is returned by the estimator's `tree_endpoint_template`, for example:
+
+```text
+GET /model-info/v1/fitted-formulas/curtailment_regressor/trees/0
+GET /model-info/daily-curtailment/fitted-formulas/amount_model/trees/0
+```
+
+Replace `0` with any zero-based index below that estimator's `tree_count`. A node with `is_leaf=false` tests `transformed_features[feature_index] <= threshold`: follow `left_child` if true, otherwise `right_child`. `missing_go_to_left` states the fitted missing-value direction (V1 normally imputes first; V2 rejects missing inputs). At a leaf, `value` is the exact fitted numeric output for that tree. Repeat for every tree in the estimator; the manifest's `formula` specifies how to combine them. A separate tree endpoint bounds response size and keeps the OpenAPI page usable. Unknown estimator or index returns `404`; disabled V2 returns `503`. The tree endpoints are read-only and require the same optional API key.
+
+The loaded V1 event classifier has a fitted raw baseline and additive boosted trees:
+
+```text
+raw_event_score(X) = baseline + sum(event_tree_k(X))
+dispatch_down_probability = sigmoid(raw_event_score(X))
+```
+
+The V1 point and quantile regressors use `baseline + sum(tree_k(X))` with the **identity** link; their target is a *change from the latest completed observation*, not absolute future MWh. The V1 curtailment and constraint regressors use the **Poisson log link**, which is important:
+
+```text
+raw_component_score(X) = baseline + sum(component_tree_k(X))
+raw_component_mwh = exp(raw_component_score(X))
+```
+
+The loaded V2 event classifier likewise applies `sigmoid(baseline + sum(tree_k(X)))`. Its selected positive-day Extra Trees amount regressor averages **240 fitted trees**:
+
+```text
+conditional_amount_mwh(X) = sum(amount_tree_k(X) for k=0..239) / 240
+predicted_daily_curtailment_mwh = event_probability(X) * max(conditional_amount_mwh(X), 0)
+```
+
+The last multiplication is serving arithmetic, also described by `/model-info/daily-curtailment/formulas`. If a later artifact selects the direct amount method, read its manifest and serving formula instead of assuming this two-stage equation. These rules are predictive associations, **not a causal formula for additional curtailment caused by EV demand**. Exporting the trees does not change or retrain either model.
 
 For example, a backend can request the metadata as follows:
 
@@ -35,7 +71,7 @@ for step in v1_formulas["steps"]:
 
 ## How to read the response
 
-`model_id`, `model_version`, `target` and `model_family` identify which deployed model the equations describe. `estimator_functions` maps symbolic calls such as `event_classifier.predict_proba(X)[1]` to the actual fitted estimator class. `estimator_equations` shows the **general nonlinear tree-ensemble form** (for example, a boosted-tree score passed through a sigmoid for event probability). It does **not** export every fitted tree split and leaf value. `symbols` defines the inputs and intermediate quantities. `fitted_parameters` contains the saved serving threshold, weights, adjustment and/or selected amount method. `steps` is an ordered list of `{id, expression, explanation}` for the calculations used by the API. `limitations` states what cannot be concluded from these equations. `single_linear_equation_available` is `false` for both models: neither has one globally valid linear-regression or logistic-regression coefficient equation.
+`model_id`, `model_version`, `target` and `model_family` identify which loaded model the *serving* equations describe. `estimator_functions` maps symbolic calls such as `event_classifier.predict_proba(X)[1]` to the fitted class. `estimator_equations` shows the link/ensemble form; `fitted_formulas_endpoint` links to the **numeric fitted trees** above. `symbols` defines inputs and intermediate quantities. `fitted_parameters` contains saved serving thresholds, weights, adjustments and/or selected method. `steps` is an ordered list of `{id, expression, explanation}` for calculations used by the API. `single_linear_equation_available` is `false` for both models: neither has one globally valid feature-coefficient equation.
 
 The expressions are **human-readable, Python-like notation**, not executable snippets. `X` is already engineered into the feature order expected by the fitted artifact. To submit original source values, use the relevant `/raw-input-schema` and `/from-raw` routes; do not send `X` to a formula route. Read `model_version` and `fitted_parameters` at runtime rather than copying today's values into a dashboard: future retraining can change them.
 

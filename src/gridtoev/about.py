@@ -103,6 +103,7 @@ def build_models_about(v1_info: dict[str, Any], v2_info: dict[str, Any] | None) 
         },
         "actuals_endpoint": "/actuals/v1",
         "formulas_endpoint": "/model-info/v1/formulas",
+        "fitted_formulas_endpoint": "/model-info/v1/fitted-formulas",
         "limitations": [
             "No verified live V1 source collector is included in this API.",
             "The API's recoverable_surplus_mwh caps predicted dispatch-down by charging power only; a consuming backend must separately cap by available flexible demand.",
@@ -178,6 +179,7 @@ def build_models_about(v1_info: dict[str, Any], v2_info: dict[str, Any] | None) 
         },
         "actuals_endpoint": "/actuals/daily-curtailment",
         "formulas_endpoint": "/model-info/daily-curtailment/formulas",
+        "fitted_formulas_endpoint": "/model-info/daily-curtailment/fitted-formulas",
         "limitations": [
             "Experimental model; not a dispatch instruction or a verified live grid reading.",
             "The daily amount does not include a network-constraint estimate.",
