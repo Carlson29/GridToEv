@@ -42,6 +42,43 @@ class RawApiTests(unittest.TestCase):
         self.assertEqual(v2["evaluation"]["test"]["daily_mae_mwh"], 1723.390575132749)
         self.assertIn("bundled historical model dataset", v2["evaluation"]["dataset_window_notice"].lower())
 
+    def test_about_metadata_is_machine_readable_and_matches_loaded_models(self):
+        self.assertEqual(self.client.get("/models/about").status_code, 401)
+        response = self.client.get("/models/about", headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["schema_version"], "1.0")
+        models = {item["model_id"]: item for item in payload["models"]}
+        self.assertEqual(set(models), {"v1", "v2"})
+        v1, v2 = models["v1"], models["v2"]
+        self.assertTrue(v1["available"])
+        self.assertTrue(v2["available"])
+        self.assertEqual(v1["model_version"], self.client.get("/model-info", headers=self.headers).json()["model_version"])
+        self.assertEqual(v2["model_version"], self.client.get("/model-info/daily-curtailment", headers=self.headers).json()["model_version"])
+        self.assertEqual(v1["target"]["interval_minutes"], 30)
+        self.assertEqual(v1["target"]["forecast_horizons_minutes"], [30, 60])
+        self.assertEqual(v1["target"]["at_risk_formula"], "predicted_curtailment_mwh + predicted_constraint_mwh")
+        self.assertIsNone(v2["target"]["at_risk_formula"])
+        self.assertEqual(v2["target"]["interval_minutes"], 1440)
+        self.assertEqual(v2["target"]["forecast_horizons_minutes"], [])
+        self.assertEqual(v2["dataset_coverage"]["last_utc"], "2026-08-30")
+        self.assertEqual(v1["evaluation"]["test_mae_mwh"], 11.825026392111367)
+        self.assertEqual(v2["evaluation"]["test_mae_mwh"], 1723.390575132749)
+        self.assertEqual(v1["serving_policy"]["ml_weight_by_horizon"], {"30": 0.0, "60": 0.0})
+        self.assertEqual(v2["serving_policy"]["method"], "two_stage")
+        self.assertEqual(v1["uncertainty"]["kind"], "p10_p90_interval")
+        self.assertEqual(v2["uncertainty"]["kind"], "event_probability_only")
+        self.assertTrue(all(source["url"].startswith("https://") for model in models.values() for source in model["data_sources"]))
+        self.assertTrue(all(not route["verified_live"] for model in models.values() for route in model["prediction_routes"]))
+        self.assertEqual(v1["actuals_endpoint"], "/actuals/v1")
+        self.assertEqual(v2["actuals_endpoint"], "/actuals/daily-curtailment")
+        self.assertTrue(payload["integration_notes"]["same_target_horizons_are_alternatives"])
+        self.assertIn("Simulated demo", payload["integration_notes"]["data_mode_labels"]["simulated"])
+        self.assertIn("not currently offered", payload["integration_notes"]["data_mode_labels"]["verified_live"])
+        self.assertIn("scenario.py", payload["integration_notes"]["consumer_scenario_formula_url"])
+        catalog = self.client.get("/models/catalog", headers=self.headers).json()
+        self.assertTrue(all(item["about_endpoint"] == "/models/about" for item in catalog["models"]))
+
     def test_actual_windows_match_bundled_labels_and_raw_example_dates(self):
         v1 = self.client.post("/actuals/v1/window", json={
             "start_target_timestamp_utc": "2026-01-15T12:30:00Z", "duration_hours": 2,

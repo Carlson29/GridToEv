@@ -97,6 +97,7 @@ class ApiTests(unittest.TestCase):
             "/model-info/v1/raw-input-schema": "V1 — 30/60-minute model",
             "/model-info/daily-curtailment/raw-input-schema": "V2 — daily curtailment model",
             "/models/catalog": "Service",
+            "/models/about": "Service",
             "/actuals/coverage": "Observed outcomes",
             "/actuals/v1": "Observed outcomes",
             "/actuals/v1/batch": "Observed outcomes",
@@ -471,6 +472,13 @@ class ApiTests(unittest.TestCase):
             self.assertIn(v2_path, schema)
 
     def test_optional_daily_model_does_not_change_v1_when_unconfigured(self) -> None:
+        about = self.client.get("/models/about")
+        self.assertEqual(about.status_code, 200, about.text)
+        models = {item["model_id"]: item for item in about.json()["models"]}
+        self.assertTrue(models["v1"]["available"])
+        self.assertFalse(models["v2"]["available"])
+        self.assertIsNone(models["v2"]["model_version"])
+        self.assertIsNone(models["v2"]["evaluation"])
         response = self.client.post(
             "/predict/curtailment/day", json={"target_date_utc": "2026-09-26"}
         )
