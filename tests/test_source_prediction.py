@@ -109,6 +109,36 @@ class SourcePredictionServiceTests(unittest.TestCase):
         self.assertLess(artifact["fitted_on"][1], report["release_gate"]["rule"].split("fresh days from ")[1][:10])
 
 
+class LineEndingTests(unittest.TestCase):
+    """A CRLF file written on Windows hashes differently from Render's Linux checkout."""
+
+    HASHED_TEXT_FILES = (
+        "models/v2/source_allocation_physics.json",
+        "benchmarks/daily_source_allocation_v2/evaluation.json",
+        "benchmarks/daily_source_allocation_v2/physics_evaluation.json",
+        "data/processed/eirgrid_source_curtailment_daily.csv",
+        "data/processed/eirgrid_source_curtailment_quality_report.json",
+    )
+
+    def test_hashed_text_files_are_lf_and_stored_byte_for_byte(self) -> None:
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        for name in self.HASHED_TEXT_FILES:
+            self.assertNotIn(b"\r", (ROOT / name).read_bytes(), name)
+        for pattern in (
+            "models/v2/source_allocation_physics.json -text",
+            "benchmarks/daily_source_allocation_v2/*.json -text",
+            "data/processed/eirgrid_source_curtailment_daily.csv -text",
+            "data/processed/eirgrid_source_curtailment_quality_report.json -text",
+        ):
+            self.assertIn(pattern, attributes)
+
+    def test_serving_artifact_hash_matches_its_exact_bytes(self) -> None:
+        report = json.loads(PHYSICS_REPORT.read_text(encoding="utf-8"))
+        import hashlib
+
+        self.assertEqual(hashlib.sha256(PHYSICS_ARTIFACT.read_bytes()).hexdigest(), report["serving_artifact_sha256"])
+
+
 class SourcePredictionApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

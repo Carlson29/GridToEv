@@ -1,0 +1,7 @@
+# Files whose SHA-256 is recorded in a report or verified at startup must have
+# identical bytes on every OS. Store them exactly as written (LF) and never
+# convert line endings on checkout, or Windows and Linux hashes will differ.
+models/v2/source_allocation_physics.json -text
+benchmarks/daily_source_allocation_v2/*.json -text
+data/processed/eirgrid_source_curtailment_daily.csv -text
+data/processed/eirgrid_source_curtailment_quality_report.json -text
