@@ -102,6 +102,7 @@ def build_models_about(v1_info: dict[str, Any], v2_info: dict[str, Any] | None) 
             "explanation": "Historical P10–P90 dispatch-down interval; it is not a guarantee for one prediction.",
         },
         "actuals_endpoint": "/actuals/v1",
+        "formulas_endpoint": "/model-info/v1/formulas",
         "limitations": [
             "No verified live V1 source collector is included in this API.",
             "The API's recoverable_surplus_mwh caps predicted dispatch-down by charging power only; a consuming backend must separately cap by available flexible demand.",
@@ -176,6 +177,7 @@ def build_models_about(v1_info: dict[str, Any], v2_info: dict[str, Any] | None) 
             "explanation": "An event probability is returned; no calibrated MWh prediction interval is served for V2.",
         },
         "actuals_endpoint": "/actuals/daily-curtailment",
+        "formulas_endpoint": "/model-info/daily-curtailment/formulas",
         "limitations": [
             "Experimental model; not a dispatch instruction or a verified live grid reading.",
             "The daily amount does not include a network-constraint estimate.",

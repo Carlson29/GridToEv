@@ -2,6 +2,14 @@
 
 `GET /models/about` is a read-only, API-key-protected JSON contract (`schema_version: "1.0"`) for a consuming backend. It returns exactly two entries, keyed by `model_id` (`v1`, `v2`), so the backend can populate a short How It Works page without parsing prose from the large `/model-info` responses. Keep `GRIDTOEV_API_KEY` on the backend; never expose it in browser code. `/models/catalog` points to this route through each model's `about_endpoint`.
 
+For actual model calculations, use `GET /model-info/v1/formulas` and `GET /model-info/daily-curtailment/formulas` (also linked as `formulas_endpoint` in `/models/about` and `/models/catalog`). Both take **no request body**, require the same `X-API-Key` header when configured, and return typed `model_version`, estimator names, symbolic ensemble equations, saved parameters, ordered output steps and plain-language explanations. The V2 route returns 503 when that optional model is disabled. A backend can display `steps[].expression` beside `steps[].explanation`; don't treat the text expressions as executable code.
+
+V1's classifier uses a boosted-tree score passed through a sigmoid to produce `dispatch_down_probability`; `dispatch_down_event_prediction` compares that probability with the saved threshold. The point regressor predicts a **change** from the latest observed dispatch-down, but the served total blends this ML estimate with a trend baseline using a saved, horizon-specific weight. The current loaded artifact has `w[30] = w[60] = 0`: the served point total comes from the trend baseline, even though the fitted point regressor still exists. Curtailment and constraint regressors provide raw component proportions, reconciled to the served total. Quantile regressors plus a saved adjustment give the P10–P90 interval. A flexible-load power cap limits `recoverable_surplus_mwh` for one half-hour.
+
+V2's boosted-tree classifier yields `curtailment_event_probability`. An Extra Trees regressor averages its fitted trees to estimate a nonnegative daily amount. For the current `two_stage` artifact, **predicted daily curtailment MWh = event probability × positive-day amount estimate**. V2 does not return a thresholded event label, constraints, or a calibrated daily MWh interval. If a later artifact selects a direct amount method, the endpoint reports that loaded method and its corresponding amount equation.
+
+Neither model is linear or logistic regression with a short list of global feature coefficients. The `estimator_equations` are the mathematical *form* of their tree ensembles; the fitted splits and leaf values live in the saved model artifacts. The `steps` describe the exact arithmetic applied to the estimator outputs in this deployment. They do not expose or authenticate raw feature provenance, and they do not convert historical test MAE into a per-prediction accuracy claim.
+
 Example backend request:
 
 ```python
@@ -29,6 +37,7 @@ The response deliberately separates facts that must not be conflated:
 | `dataset_coverage` | Bounds of the bundled prediction dataset, **not** observed-outcome coverage or an assertion that today has complete inputs. |
 | `evaluation.test_mae_mwh`, `metric_label`, `test_period_*`, `public_evaluation_url` | A measured historical test score with its correct time scale and a public source link. `evaluation` is `null` if optional V2 is disabled. Do not claim this is the error of the next prediction or compare V1 half-hour and V2 daily MWh scores numerically. |
 | `estimators`, `serving_policy` | Fitted model names **and** how the served amount is formed. V1's final dispatch-down amount is a trend/ML blend; the saved weights can make the trend baseline the full served amount. V2 combines event probability with a positive-day amount estimate. |
+| `formulas_endpoint` | Per-model equations, loaded parameters, symbols and plain-English calculation steps. |
 | `uncertainty` | V1 serves P10/P50/P90 dispatch-down values and reports historical P10–P90 coverage. V2 serves an event probability but no calibrated MWh amount interval. |
 | `actuals_endpoint` | Where to look up an observed outcome after it has been published. Actuals are separate from predictions and may be pending. |
 

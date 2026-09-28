@@ -82,6 +82,7 @@ class ApiTests(unittest.TestCase):
         expected_tags = {
             "/health": "Service",
             "/model-info": "V1 — 30/60-minute model",
+            "/model-info/v1/formulas": "V1 — 30/60-minute model",
             "/dataset/info": "V1 — 30/60-minute model",
             "/dataset/available-times": "V1 — 30/60-minute model",
             "/predict/latest": "V1 — 30/60-minute model",
@@ -89,6 +90,7 @@ class ApiTests(unittest.TestCase):
             "/predict/window/from-dataset": "V1 — 30/60-minute model",
             "/predict/features": "V1 — 30/60-minute model",
             "/model-info/daily-curtailment": "V2 — daily curtailment model",
+            "/model-info/daily-curtailment/formulas": "V2 — daily curtailment model",
             "/dataset/daily-curtailment/coverage": "V2 — daily curtailment model",
             "/predict/curtailment/day": "V2 — daily curtailment model",
             "/predict/curtailment/window": "V2 — daily curtailment model",
@@ -485,6 +487,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.client.get("/dataset/daily-curtailment/coverage").status_code, 503)
         self.assertEqual(self.client.get("/model-info/daily-curtailment/raw-input-schema").status_code, 503)
+        self.assertEqual(self.client.get("/model-info/daily-curtailment/formulas").status_code, 503)
         self.assertFalse(self.client.get("/models/catalog").json()["models"][1]["available"])
         self.assertEqual(self.client.get("/health").status_code, 200)
 

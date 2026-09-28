@@ -1,4 +1,5 @@
 import json
+import copy
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -10,6 +11,7 @@ from gridtoev.constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
 from gridtoev.daily_curtailment import DEFAULT_DAILY_DATASET, REGIONS
 from gridtoev.daily_model import DEFAULT_REPORT, DailyCurtailmentService
 from gridtoev.inference import PredictionService
+from gridtoev.formulas import v2_formulas
 from gridtoev.release_guard import DEFAULT_REPORT_PATH
 from tests.test_raw_prediction import historical_v1_raw_request
 
@@ -78,6 +80,50 @@ class RawApiTests(unittest.TestCase):
         self.assertIn("scenario.py", payload["integration_notes"]["consumer_scenario_formula_url"])
         catalog = self.client.get("/models/catalog", headers=self.headers).json()
         self.assertTrue(all(item["about_endpoint"] == "/models/about" for item in catalog["models"]))
+
+    def test_formula_endpoints_describe_fitted_serving_math(self):
+        paths = {
+            "v1": "/model-info/v1/formulas",
+            "v2": "/model-info/daily-curtailment/formulas",
+        }
+        for model_id, path in paths.items():
+            self.assertEqual(self.client.get(path).status_code, 401)
+            response = self.client.get(path, headers=self.headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            formula = response.json()
+            self.assertEqual(formula["model_id"], model_id)
+            self.assertFalse(formula["single_linear_equation_available"])
+            self.assertTrue(formula["steps"])
+            self.assertEqual(
+                formula["model_version"],
+                self.client.get("/model-info" if model_id == "v1" else "/model-info/daily-curtailment", headers=self.headers).json()["model_version"],
+            )
+        v1 = self.client.get(paths["v1"], headers=self.headers).json()
+        v2 = self.client.get(paths["v2"], headers=self.headers).json()
+        self.assertEqual(v1["fitted_parameters"]["classification_threshold"], 0.1)
+        self.assertIn("exp(-F(X))", v1["estimator_equations"]["event_classifier"])
+        self.assertEqual(v1["fitted_parameters"]["dispatch_regression_ml_weight_by_horizon"], {"30": 0.0, "60": 0.0})
+        self.assertIn("trend_baseline", {step["id"] for step in v1["steps"]})
+        self.assertIn("dispatch_down_event_prediction", {step["id"] for step in v1["steps"]})
+        self.assertEqual(v2["fitted_parameters"]["selected_amount_method"], "two_stage")
+        self.assertIn("sum(tree_k.predict(X)", v2["estimator_equations"]["amount_regressor"])
+        amount = next(step for step in v2["steps"] if step["id"] == "predicted_curtailment_mwh")
+        self.assertIn("curtailment_event_probability * amount_estimate_mwh", amount["expression"])
+        about = {model["model_id"]: model for model in self.client.get("/models/about", headers=self.headers).json()["models"]}
+        catalog = {model["model_id"]: model for model in self.client.get("/models/catalog", headers=self.headers).json()["models"]}
+        for model_id, path in paths.items():
+            self.assertEqual(about[model_id]["formulas_endpoint"], path)
+            self.assertEqual(catalog[model_id]["formulas_endpoint"], path)
+
+    def test_formula_builder_tracks_alternate_daily_artifact_selection(self):
+        info = copy.deepcopy(self.client.get("/model-info/daily-curtailment", headers=self.headers).json())
+        info["prediction_components"]["amount_model"]["selected_method"] = "direct_median"
+        info["prediction_components"]["amount_model"]["estimator"] = "HistGradientBoostingRegressor"
+        formulas = v2_formulas(info)
+        self.assertEqual(formulas["fitted_parameters"]["selected_amount_method"], "direct_median")
+        self.assertIn("initial_prediction", formulas["estimator_equations"]["amount_regressor"])
+        amount = next(step for step in formulas["steps"] if step["id"] == "predicted_curtailment_mwh")
+        self.assertEqual(amount["expression"], "predicted_curtailment_mwh = amount_estimate_mwh")
 
     def test_actual_windows_match_bundled_labels_and_raw_example_dates(self):
         v1 = self.client.post("/actuals/v1/window", json={
