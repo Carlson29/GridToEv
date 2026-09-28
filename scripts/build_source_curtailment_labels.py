@@ -56,9 +56,9 @@ def main() -> None:
     )
     daily_reconciliation = reconcile_daily_with_v2(daily, v2)
 
-    labels.to_csv(HALF_HOUR_OUTPUT, index=False, date_format="%Y-%m-%dT%H:%M:%SZ", compression=GZIP)
+    labels.to_csv(HALF_HOUR_OUTPUT, index=False, date_format="%Y-%m-%dT%H:%M:%SZ", compression=GZIP, lineterminator="\n")
     daily.assign(target_date_utc=daily["target_date_utc"].dt.strftime("%Y-%m-%d")).to_csv(
-        DAILY_OUTPUT, index=False, float_format="%.6f",
+        DAILY_OUTPUT, index=False, float_format="%.6f", lineterminator="\n",
     )
     report = source_label_quality_report(labels, daily)
     report["sources"] = sources
@@ -67,7 +67,7 @@ def main() -> None:
     report["outputs"] = [
         path.relative_to(REPO_ROOT).as_posix() for path in (HALF_HOUR_OUTPUT, DAILY_OUTPUT)
     ]
-    REPORT_OUTPUT.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    REPORT_OUTPUT.write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
     print(json.dumps({key: report[key] for key in ("rows", "complete_half_hours", "daily", "core_reconciliation")}, indent=2))
 
 

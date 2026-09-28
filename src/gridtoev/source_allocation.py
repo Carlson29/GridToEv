@@ -369,7 +369,7 @@ def evaluate(
     report = _rounded(report)
     if report_path is not None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
     return report
 
 
@@ -553,9 +553,9 @@ def evaluate_physics(
             "parent_artifact_sha256": report["inputs"]["parent_artifact_sha256"],
         }
         serving_artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        serving_artifact_path.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+        serving_artifact_path.write_text(json.dumps(artifact, indent=2), encoding="utf-8", newline="\n")
         report["serving_artifact"] = serving_artifact_path.relative_to(PROJECT_ROOT).as_posix()             if serving_artifact_path.is_relative_to(PROJECT_ROOT) else serving_artifact_path.name
         report["serving_artifact_sha256"] = _sha256(serving_artifact_path)
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
     return report

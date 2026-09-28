@@ -39,7 +39,7 @@
   ],
   "inputs": {
     "dataset_sha256": "0ad04074632cc2f15a499b0e3f3546124054259ecd566d9593c2ed7ff6ac2cab",
-    "source_labels_sha256": "a81078b9b65afbe214d6d812403cd4367b429be3c402f91eda6d158110a8dd04",
+    "source_labels_sha256": "1e73b31bd8b851975338dc05190660e77fe01bc1796c35e635a4085f9e83ef6a",
     "parent_artifact_sha256": "6b2bcf6c3a3cff265bbfb581071e3bb4749d1459d7326909971d5cb5ea97d2de"
   },
   "date_ranges": {
