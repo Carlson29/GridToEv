@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
+from .about import build_models_about
+from .formulas import v1_formulas, v2_formulas
 from .actuals import ActualsService
 from .constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
 from .daily_curtailment import DEFAULT_DAILY_DATASET, DEFAULT_HISTORY
@@ -46,7 +48,7 @@ V1's dataset replay endpoints use a **fixed historical dataset**. In particular,
 
 Send the shared `X-API-Key` using **Authorize** for protected routes. `GET /health` is public and shows whether optional v2 loaded. To compare a prediction with reality, copy `target_timestamp_utc` from v1 to `/actuals/v1`, or `target_date_utc` from v2 to `/actuals/daily-curtailment`. For ordered arrays, use `/actuals/v1/window` or `/actuals/daily-curtailment/window`. Actuals come from a separately refreshed EirGrid snapshot and may be `pending` or `missing`; raw forecast inputs cannot create actual outcomes.
 
-`GET /models/catalog` lists the two tasks. Model-info scores are historical evaluations, **not the error of an individual prediction**. Raw-input routes validate shape and claimed availability times but cannot independently verify that caller-supplied values were truly published at those times; they do not fetch a live V1 source feed.
+`GET /models/catalog` lists the two tasks. `GET /models/about` gives downstream backends compact, typed About-page facts for both models: targets, sources, date coverage, route data modes, tested accuracy and uncertainty limits. `GET /model-info/v1/formulas` and `GET /model-info/daily-curtailment/formulas` explain the nonlinear classifier/regressor forms and exact serving calculations with loaded parameters. Model-info scores are historical evaluations, **not the error of an individual prediction**. Raw-input routes validate shape and claimed availability times but cannot independently verify that caller-supplied values were truly published at those times; they do not fetch a live V1 source feed.
 
 The prefilled **raw-input** request bodies demonstrate the **next target beyond each model dataset**, without adding that target or its outcome to the dataset. V1 uses the latest bundled source row to predict the next unrecorded half-hour; its example publication times are illustrative because the dataset does not preserve release receipts. V2 uses archived Open-Meteo day-ahead forecasts for the first day after its model dataset. These are frozen-dataset demos, **not forecasts for today's clock time**. Replace values and timestamps with genuinely available inputs for any new prediction. If you do not have all 49 V1 observations or 96 V2 forecasts, use the simpler dataset/weather-backed endpoints instead.
 """
@@ -444,6 +446,116 @@ class PointActualBatchResponse(BaseModel):
     actuals: list[PointActualResponse]
 
 
+class ModelAboutTarget(BaseModel):
+    name: str
+    interval_minutes: int = Field(description="Duration of one target observation: 30 minutes for V1, 1440 for V2. Not the same as forecast lead time.")
+    forecast_horizons_minutes: list[int] = Field(description="V1 has 30/60-minute leads; V2 predicts a whole UTC day and has no comparable single lead.")
+    energy_unit: str
+    prediction_field: str
+    component_fields: list[str]
+    at_risk_formula: str | None = Field(description="V1-only identity: curtailment plus constraints. Null for daily V2 because it predicts no constraints.")
+    interpretation: str
+
+
+class ModelAboutSource(BaseModel):
+    name: str
+    role: str
+    url: str
+
+
+class ModelAboutRoute(BaseModel):
+    path: str
+    data_mode: str = Field(description="Historical prediction, archived day-ahead forecast, or unverified caller-supplied inputs; not an automatically verified live feed.")
+    explanation: str
+    verified_live: bool = Field(description="False for all current GridToEv prediction routes; never infer live provenance from today's timestamp alone.")
+
+
+class ModelAboutCoverage(BaseModel):
+    first_utc: str | None
+    last_utc: str | None
+    time_kind: str
+    details_endpoint: str
+
+
+class ModelAboutEvaluation(BaseModel):
+    test_mae_mwh: float = Field(description="Measured held-out mean absolute error, not a promise about the next forecast.")
+    metric_label: str
+    test_period_start_utc: str
+    test_period_end_utc: str
+    test_rows: int
+    details_endpoint: str
+    public_evaluation_url: str
+    caveat: str
+
+
+class ModelAboutUncertainty(BaseModel):
+    kind: str
+    response_fields: list[str]
+    empirical_test_coverage: float | None = Field(description="V1 P10–P90 historical coverage; null when the model has no amount interval.")
+    explanation: str
+
+
+class ModelAboutServingPolicy(BaseModel):
+    method: str
+    ml_weight_by_horizon: dict[str, float] | None = Field(description="V1's saved ML blend weights by 30/60-minute lead; null for daily V2.")
+    explanation: str
+
+
+class ModelAboutItem(BaseModel):
+    model_id: Literal["v1", "v2"]
+    available: bool
+    model_version: str | None
+    display_name: str
+    experimental: bool
+    plain_language_summary: str
+    target: ModelAboutTarget
+    data_sources: list[ModelAboutSource]
+    prediction_routes: list[ModelAboutRoute]
+    dataset_coverage: ModelAboutCoverage
+    estimators: dict[str, str]
+    serving_policy: ModelAboutServingPolicy | None
+    evaluation: ModelAboutEvaluation | None
+    uncertainty: ModelAboutUncertainty
+    actuals_endpoint: str
+    formulas_endpoint: str = Field(description="GET route with classification, regression and served-output equations for this model.")
+    limitations: list[str]
+
+
+class ModelFormulaStep(BaseModel):
+    id: str = Field(description="Stable identifier, often the output field or intermediate quantity.")
+    expression: str = Field(description="Python-like symbolic equation matching the serving arithmetic; estimator.predict calls refer to fitted tree ensembles.")
+    explanation: str = Field(description="Plain-language meaning of this calculation.")
+
+
+class ModelFormulasResponse(BaseModel):
+    model_id: Literal["v1", "v2"]
+    model_version: str
+    target: str
+    model_family: str
+    single_linear_equation_available: bool = Field(description="False: fitted tree ensembles are nonlinear; there is no short global coefficient formula.")
+    estimator_functions: dict[str, str] = Field(description="Symbolic predictor call to fitted estimator class name.")
+    estimator_equations: dict[str, str] = Field(description="General nonlinear ensemble form; tree splits, leaves and fitted values remain in the saved artifact.")
+    symbols: dict[str, str] = Field(description="Input and intermediate symbol definitions, with units where applicable.")
+    fitted_parameters: dict[str, Any] = Field(description="Actual serving thresholds, blend weights and method read from the loaded model.")
+    steps: list[ModelFormulaStep] = Field(description="Classification and regression equations in serving order.")
+    limitations: list[str]
+
+
+class ModelAboutIntegrationNotes(BaseModel):
+    same_target_horizons_are_alternatives: bool
+    data_mode_notice: str
+    data_mode_labels: dict[str, str] = Field(description="Suggested labels, including consumer-owned simulated demos and the currently unavailable verified-live state.")
+    consumer_scenario_formula_url: str
+    consumer_scenario_notice: str
+    metric_comparison_notice: str
+
+
+class ModelsAboutResponse(BaseModel):
+    schema_version: Literal["1.0"] = Field(description="Stable contract version for backend consumers.")
+    models: list[ModelAboutItem] = Field(description="V1 and V2 in fixed order, even when experimental V2 is unavailable.")
+    integration_notes: ModelAboutIntegrationNotes
+
+
 class DatasetInfoResponse(BaseModel):
     available_issue_timestamp_min_utc: str
     available_issue_timestamp_max_utc: str
@@ -618,6 +730,8 @@ def create_app(
                     "model_version": prediction_service.metadata["model_version"],
                     "target": "Dispatch-down event and MWh per half-hour, 30 or 60 minutes ahead",
                     "details_endpoint": "/model-info",
+                    "about_endpoint": "/models/about",
+                    "formulas_endpoint": "/model-info/v1/formulas",
                     "raw_input_schema_endpoint": "/model-info/v1/raw-input-schema",
                     "raw_prediction_endpoint": "/predict/v1/from-raw",
                 },
@@ -626,6 +740,8 @@ def create_app(
                     "model_version": daily.bundle["metadata"]["model_version"] if daily is not None else None,
                     "target": "Curtailment event and total MWh over a full UTC day",
                     "details_endpoint": "/model-info/daily-curtailment",
+                    "about_endpoint": "/models/about",
+                    "formulas_endpoint": "/model-info/daily-curtailment/formulas",
                     "raw_input_schema_endpoint": "/model-info/daily-curtailment/raw-input-schema",
                     "raw_prediction_endpoint": "/predict/curtailment/from-raw",
                 },
@@ -634,12 +750,46 @@ def create_app(
         }
 
     @app.get(
+        "/models/about",
+        response_model=ModelsAboutResponse,
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_SERVICE],
+        summary="Backend-ready About-page facts for V1 and V2",
+        description=(
+            "No input. One typed response for a consuming backend to extract each model's name, "
+            "version, target and interval, source links, prediction-route data modes, "
+            "historical test MAE and uncertainty, actuals lookup, and limitations. "
+            "V1's half-hour curtailment-plus-constraints identity does not apply to V2's "
+            "daily curtailment-only result. No route is marked verified live, and "
+            "client-generated simulations must remain labelled simulated. "
+            "EV-demand, efficiency and charging-session formulas belong to the consuming backend. "
+            "V2 remains listed when disabled, but its version, estimators and evaluation are unavailable."
+        ),
+    )
+    def models_about() -> dict[str, Any]:
+        daily = app.state.daily_curtailment_service
+        return build_models_about(
+            prediction_service.model_info(),
+            daily.model_info() if daily is not None else None,
+        )
+
+    @app.get(
         "/model-info", dependencies=[Depends(require_api_key)], tags=[TAG_V1],
         summary="V1 model version, required live features and historical dataset range",
         description="No input. Returns V1's seven fitted estimator names and roles, saved held-out and baseline metrics, serving blend weights, caveats and feature contract. The main MWh result is not necessarily the ML regressor's output. For original-source manual input use `/model-info/v1/raw-input-schema` and `/predict/v1/from-raw`.",
     )
     def model_info() -> dict[str, Any]:
         return prediction_service.model_info()
+
+    @app.get(
+        "/model-info/v1/formulas",
+        response_model=ModelFormulasResponse,
+        dependencies=[Depends(require_api_key)], tags=[TAG_V1],
+        summary="V1 classification, regression, trend-blend and output formulas",
+        description="No input. Gives symbolic equations in serving order, with the fitted threshold, horizon weights, trend alphas and interval adjustment. The underlying histogram gradient-boosted trees have no single linear coefficient formula. In the current artifact both V1 point-regression blend weights are zero, so the served total comes from the trend baseline; component and interval models still run.",
+    )
+    def v1_model_formulas() -> dict[str, Any]:
+        return v1_formulas(prediction_service.model_info(), prediction_service.metadata)
 
     @app.get(
         "/model-info/v1/raw-input-schema",
@@ -859,6 +1009,19 @@ def create_app(
         if available_service is None:
             raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
         return available_service.model_info()
+
+    @app.get(
+        "/model-info/daily-curtailment/formulas",
+        response_model=ModelFormulasResponse,
+        dependencies=[Depends(require_api_key)], tags=[TAG_V2],
+        summary="V2 daily event-classification and amount-regression formulas",
+        description="No input. Shows how the fitted classifier probability and nonnegative daily amount regressor produce the served curtailment MWh. The selected two-stage or direct method is read from the loaded artifact. These tree models have no single linear coefficient formula. Returns 503 if optional V2 is disabled.",
+    )
+    def daily_model_formulas() -> dict[str, Any]:
+        available_service = app.state.daily_curtailment_service
+        if available_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
+        return v2_formulas(available_service.model_info())
 
     @app.get(
         "/model-info/daily-curtailment/raw-input-schema",

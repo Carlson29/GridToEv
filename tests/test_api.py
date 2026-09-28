@@ -82,6 +82,7 @@ class ApiTests(unittest.TestCase):
         expected_tags = {
             "/health": "Service",
             "/model-info": "V1 — 30/60-minute model",
+            "/model-info/v1/formulas": "V1 — 30/60-minute model",
             "/dataset/info": "V1 — 30/60-minute model",
             "/dataset/available-times": "V1 — 30/60-minute model",
             "/predict/latest": "V1 — 30/60-minute model",
@@ -89,6 +90,7 @@ class ApiTests(unittest.TestCase):
             "/predict/window/from-dataset": "V1 — 30/60-minute model",
             "/predict/features": "V1 — 30/60-minute model",
             "/model-info/daily-curtailment": "V2 — daily curtailment model",
+            "/model-info/daily-curtailment/formulas": "V2 — daily curtailment model",
             "/dataset/daily-curtailment/coverage": "V2 — daily curtailment model",
             "/predict/curtailment/day": "V2 — daily curtailment model",
             "/predict/curtailment/window": "V2 — daily curtailment model",
@@ -97,6 +99,7 @@ class ApiTests(unittest.TestCase):
             "/model-info/v1/raw-input-schema": "V1 — 30/60-minute model",
             "/model-info/daily-curtailment/raw-input-schema": "V2 — daily curtailment model",
             "/models/catalog": "Service",
+            "/models/about": "Service",
             "/actuals/coverage": "Observed outcomes",
             "/actuals/v1": "Observed outcomes",
             "/actuals/v1/batch": "Observed outcomes",
@@ -471,12 +474,20 @@ class ApiTests(unittest.TestCase):
             self.assertIn(v2_path, schema)
 
     def test_optional_daily_model_does_not_change_v1_when_unconfigured(self) -> None:
+        about = self.client.get("/models/about")
+        self.assertEqual(about.status_code, 200, about.text)
+        models = {item["model_id"]: item for item in about.json()["models"]}
+        self.assertTrue(models["v1"]["available"])
+        self.assertFalse(models["v2"]["available"])
+        self.assertIsNone(models["v2"]["model_version"])
+        self.assertIsNone(models["v2"]["evaluation"])
         response = self.client.post(
             "/predict/curtailment/day", json={"target_date_utc": "2026-09-26"}
         )
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.client.get("/dataset/daily-curtailment/coverage").status_code, 503)
         self.assertEqual(self.client.get("/model-info/daily-curtailment/raw-input-schema").status_code, 503)
+        self.assertEqual(self.client.get("/model-info/daily-curtailment/formulas").status_code, 503)
         self.assertFalse(self.client.get("/models/catalog").json()["models"][1]["available"])
         self.assertEqual(self.client.get("/health").status_code, 200)
 
