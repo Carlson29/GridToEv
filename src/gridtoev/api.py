@@ -19,6 +19,9 @@ from .fitted_formulas import (
     export_v1_tree, export_v2_tree,
 )
 from .actuals import ActualsService
+from .source_actuals import DEFAULT_SOURCE_HISTORY, SourceActualsService
+from .source_allocation import DEFAULT_HISTORY as DEFAULT_CAPACITY_HISTORY, PHYSICS_ARTIFACT, PHYSICS_REPORT
+from .source_prediction import SourceAllocationService
 from .constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
 from .daily_curtailment import DEFAULT_DAILY_DATASET, DEFAULT_HISTORY
 from .daily_model import DEFAULT_REPORT, EARLIEST_TARGET_DATE, DailyCurtailmentService
@@ -40,6 +43,8 @@ TAG_SERVICE = "Service"
 TAG_V1 = "V1 — 30/60-minute model"
 TAG_V2 = "V2 — daily curtailment model"
 TAG_ACTUALS = "Observed outcomes"
+TAG_SOURCE_ACTUALS = "Observed curtailment by source (Wind/Solar)"
+TAG_SOURCE_SPLIT = "V2 — wind/solar split (experimental)"
 
 API_DESCRIPTION = """## Choose the right model
 
@@ -62,6 +67,17 @@ OPENAPI_TAGS = [
     {"name": TAG_V1, "description": "V1 predicts 30- or 60-minute-ahead renewable dispatch-down from a historical half-hour dataset or a full feature snapshot."},
     {"name": TAG_V2, "description": "Experimental V2 predicts curtailment event probability and total MWh for a whole UTC day."},
     {"name": TAG_ACTUALS, "description": "Observed EirGrid outcomes for V1 half-hours and V2 complete UTC days; these are not model predictions."},
+    {"name": TAG_SOURCE_ACTUALS, "description": (
+        "What actually happened, split by technology. When the grid cannot use all the renewable power "
+        "available, EirGrid tells some wind farms and solar farms to produce less; that wasted energy is "
+        "*curtailment*. These routes show how much of a past day's curtailment in Ireland came from wind "
+        "and how much from solar, using EirGrid's published records. They are **not forecasts**."
+    )},
+    {"name": TAG_SOURCE_SPLIT, "description": (
+        "**Experimental forecast.** Splits V2's predicted curtailment for a whole UTC day into how much is "
+        "likely to come from wind and how much from solar. It is live so that its real-world accuracy can be "
+        "checked on days nobody has seen yet; treat its numbers as provisional. Needs V2 to be enabled."
+    )},
 ]
 
 
@@ -401,6 +417,82 @@ class DailyActualsWindowRequest(BaseModel):
     )
 
 
+class SourceHalfHourActual(BaseModel):
+    timestamp_utc: str = Field(description="Start of the 30-minute period, in UTC.")
+    wind_curtailment_mwh: float | None = Field(description="Wind energy curtailed in this half-hour, MWh; null if EirGrid published no wind figure.")
+    solar_curtailment_mwh: float | None = Field(description="Solar energy curtailed in this half-hour, MWh; null if EirGrid published no solar figure (for example before April 2023).")
+
+
+class SourceDailyActualResponse(BaseModel):
+    status: Literal["available", "solar_not_published", "pending", "missing"] = Field(
+        description=(
+            "available: complete wind and solar figures for all 48 half-hours. "
+            "solar_not_published: an early day (before April 2023) when EirGrid published wind only; solar is unknown, not zero. "
+            "pending: EirGrid has not yet published this whole day. "
+            "missing: the day is inside the archive but its record is incomplete."
+        )
+    )
+    target_date_utc: str = Field(description="The UTC calendar day looked up, YYYY-MM-DD.")
+    source_latest_timestamp_utc: str = Field(description="Latest half-hour in the bundled EirGrid archive; later days are pending.")
+    wind_curtailment_mwh: float | None = Field(description="Wind energy curtailed over the whole UTC day, in MWh (megawatt-hours). 1 MWh is roughly enough to fully charge 15-20 typical electric cars.")
+    solar_curtailment_mwh: float | None = Field(description="Solar energy curtailed over the whole UTC day, MWh; null when unknown.")
+    total_curtailment_mwh: float | None = Field(description="Wind + solar. Equals the day's total from /actuals/daily-curtailment.")
+    wind_share_percent: float | None = Field(description="Wind's share of the day's curtailment, 0-100; null when nothing was curtailed.")
+    solar_share_percent: float | None = Field(description="Solar's share of the day's curtailment, 0-100; null when nothing was curtailed.")
+    complete_half_hour_count: int = Field(description="How many of the day's 48 half-hours have both wind and solar figures.")
+    summary: str = Field(description="One plain-English sentence describing the result.")
+    half_hours: list[SourceHalfHourActual] | None = Field(default=None, description="The day's 48 half-hour figures, only when include_half_hours=true.")
+
+
+class SourceActualsCoverageResponse(BaseModel):
+    source: str = Field(description="Where the figures come from.")
+    unit: Literal["MWh"]
+    first_half_hour_utc: str = Field(description="Earliest half-hour in the archive.")
+    last_half_hour_utc: str = Field(description="Latest half-hour in the archive.")
+    solar_first_published_utc: str | None = Field(description="First half-hour with an Irish solar figure. Earlier days are wind only.")
+    complete_day_min_utc: str | None = Field(description="Earliest UTC day with complete wind and solar figures.")
+    complete_day_max_utc: str | None = Field(description="Latest UTC day with complete wind and solar figures.")
+    complete_day_count: int = Field(description="Number of complete wind-and-solar UTC days.")
+    notice: str = Field(description="Plain-language limits of this archive.")
+
+
+class SourceSplitRequest(BaseModel):
+    target_date_utc: date = Field(
+        description=(
+            "The UTC calendar day to forecast, YYYY-MM-DD, from 2024-04-01 through today (UTC). "
+            "The forecast is made as of 00:00 UTC that day, using only information available then."
+        ),
+        examples=["2026-09-15"],
+    )
+
+
+class SourceCapacityProxy(BaseModel):
+    solar_mw: float = Field(description="Estimated installed solar capacity (MW), from EirGrid data already published before this day.")
+    wind_mw: float = Field(description="Estimated installed wind capacity (MW), from EirGrid data already published before this day.")
+    published_data_through_utc: str = Field(description="Last day of EirGrid data used for the capacity estimate; always at least a month before the target day.")
+
+
+class SourceSplitResponse(BaseModel):
+    model_version: str = Field(description="Version of the wind/solar split model.")
+    parent_model_version: str = Field(description="Version of the V2 model whose daily total is being split.")
+    experimental: Literal[True] = Field(description="Always true: this forecast has not yet been confirmed on fresh data.")
+    validation_status: str | None = Field(description="candidate_awaiting_fresh_confirmation until enough new days are scored; see /model-info/curtailment/sources.")
+    target_date_utc: str = Field(description="The UTC day forecast.")
+    issue_timestamp_utc: str = Field(description="When the forecast is treated as made (00:00 UTC on the target day).")
+    forecast_max_available_at_utc: str = Field(description="Latest time any weather-forecast input became available; never after the issue time.")
+    curtailment_event_probability: float = Field(description="V2's probability (0-1) that any curtailment happens that day.")
+    predicted_curtailment_mwh: float = Field(description="V2's predicted total curtailment for the day, MWh. Identical to /predict/curtailment/day.")
+    predicted_wind_curtailment_mwh: float = Field(description="Part of the total expected to come from wind, MWh.")
+    predicted_solar_curtailment_mwh: float = Field(description="Part of the total expected to come from solar, MWh.")
+    reconciliation_error_mwh: float = Field(description="|wind + solar - total|; effectively zero because the split always adds up.")
+    predicted_wind_share_percent: float = Field(description="Wind's expected share of the day's curtailment, 0-100.")
+    predicted_solar_share_percent: float = Field(description="Solar's expected share of the day's curtailment, 0-100.")
+    capacity_proxy: SourceCapacityProxy = Field(description="The installed-capacity estimates used, so the result can be audited.")
+    summary: str = Field(description="One plain-English sentence describing the forecast.")
+    compare_with_actual: str = Field(description="Call this after EirGrid publishes the day to see what really happened.")
+    notice: str = Field(description="Plain-language limits of this experimental forecast.")
+
+
 class DailyActualsWindowResponse(BaseModel):
     semantics: Literal["observed_complete_day_window"]
     start_date_utc: str
@@ -683,6 +775,8 @@ def create_app(
     *,
     daily_service: DailyCurtailmentService | None = None,
     actuals_service: ActualsService | None = None,
+    source_actuals_service: SourceActualsService | None = None,
+    source_allocation_service: SourceAllocationService | None = None,
 ) -> FastAPI:
     prediction_service = service or _default_service()
     daily_model_path = os.getenv("GRIDTOEV_DAILY_MODEL_PATH")
@@ -695,6 +789,9 @@ def create_app(
     )
     observation_service = actuals_service or ActualsService(
         os.getenv("GRIDTOEV_ACTUALS_PATH", str(DEFAULT_HISTORY))
+    )
+    source_observation_service = source_actuals_service or SourceActualsService(
+        os.getenv("GRIDTOEV_SOURCE_ACTUALS_PATH", str(DEFAULT_SOURCE_HISTORY))
     )
     configured_api_key = (
         api_key if api_key is not None else os.getenv("GRIDTOEV_API_KEY", "")
@@ -734,6 +831,22 @@ def create_app(
                 logger.warning("Optional daily model unavailable; v1 remains ready: %s", type(error).__name__)
             else:
                 app.state.daily_curtailment_service = optional_daily_service
+        # The experimental wind/solar split needs V2's total; it never affects V1 or V2 readiness.
+        app.state.source_allocation_service = None
+        split_enabled = os.getenv("GRIDTOEV_SOURCE_SPLIT_ENABLED", "1").strip() != "0"
+        if app.state.daily_curtailment_service is not None and split_enabled:
+            split_service = source_allocation_service or SourceAllocationService(
+                app.state.daily_curtailment_service,
+                os.getenv("GRIDTOEV_SOURCE_MODEL_PATH", str(PHYSICS_ARTIFACT)),
+                os.getenv("GRIDTOEV_SOURCE_REPORT_PATH", str(PHYSICS_REPORT)),
+                os.getenv("GRIDTOEV_SOURCE_CAPACITY_PATH", str(DEFAULT_CAPACITY_HISTORY)),
+            )
+            try:
+                split_service.load()
+            except Exception as error:
+                logger.warning("Experimental wind/solar split unavailable: %s", type(error).__name__)
+            else:
+                app.state.source_allocation_service = split_service
         yield
 
     app = FastAPI(
@@ -1108,6 +1221,112 @@ def create_app(
             "actuals": rows,
             "notice": "EirGrid observed complete-day curtailment only; not V2 model predictions.",
         }
+
+    @app.get(
+        "/actuals/curtailment/sources/coverage",
+        response_model=SourceActualsCoverageResponse,
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_SOURCE_ACTUALS],
+        summary="Which days have recorded wind/solar curtailment figures",
+        description=(
+            "No input. Tells you the range of days you can look up with `/actuals/curtailment/sources`: "
+            "the first and last day with complete wind **and** solar figures, and when EirGrid started "
+            "publishing solar figures (April 2023). Days after the archive's last day are not yet available."
+        ),
+    )
+    def source_actuals_coverage() -> dict[str, Any]:
+        try:
+            return source_observation_service.coverage()
+        except (OSError, ValueError) as error:
+            logger.warning("Source actuals archive unavailable: %s", type(error).__name__)
+            raise HTTPException(status_code=503, detail="Source actuals archive unavailable") from error
+
+    @app.get(
+        "/actuals/curtailment/sources",
+        response_model=SourceDailyActualResponse,
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_SOURCE_ACTUALS],
+        summary="How much wind and solar power was wasted (curtailed) on a past day",
+        description=(
+            "**What it answers:** on a given past day, how much renewable electricity in Ireland was "
+            "curtailed (turned down because the grid could not use it), and how much of that was wind "
+            "versus solar.\n\n"
+            "**Input:** `target_date_utc` as `YYYY-MM-DD` (a UTC calendar day). Add "
+            "`include_half_hours=true` to also get the 48 half-hour figures.\n\n"
+            "**Output:** wind MWh, solar MWh, their total, each one's percentage share, and a one-sentence "
+            "`summary`. The total matches `/actuals/daily-curtailment` for the same day.\n\n"
+            "**Important:** these are EirGrid's *recorded* figures, not predictions. A predicted wind/solar "
+            "split is not offered yet because it has not passed its accuracy checks. Unknown figures are "
+            "returned as null, never as a made-up zero."
+        ),
+    )
+    def source_daily_actual(
+        target_date_utc: Annotated[
+            date,
+            Query(description="The UTC calendar day to look up, YYYY-MM-DD.", examples=["2026-05-10"]),
+        ],
+        include_half_hours: Annotated[
+            bool,
+            Query(description="Also return the day's 48 half-hour wind and solar figures."),
+        ] = False,
+    ) -> dict[str, Any]:
+        try:
+            return source_observation_service.day(target_date_utc, include_half_hours=include_half_hours)
+        except (OSError, ValueError) as error:
+            logger.warning("Source actuals archive unavailable: %s", type(error).__name__)
+            raise HTTPException(status_code=503, detail="Source actuals archive unavailable") from error
+
+    @app.post(
+        "/predict/curtailment/sources/day",
+        response_model=SourceSplitResponse,
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_SOURCE_SPLIT],
+        summary="Experimental: how much of a day's predicted curtailment will be wind vs solar",
+        description=(
+            "**What it answers:** for one UTC day, how much renewable power V2 expects to be wasted "
+            "(curtailed), and how much of that is likely to be wind versus solar.\n\n"
+            '**Input:** `{"target_date_utc": "YYYY-MM-DD"}`, from 2024-04-01 through today (UTC). '
+            "Nothing else: the server fetches the archived day-ahead weather forecast itself.\n\n"
+            "**How it works:** V2 predicts the day's total. EirGrid tends to cut wind and solar in "
+            "proportion to what each could produce, so the split compares that day's forecast wind and "
+            "sunshine, each scaled by installed capacity estimated only from already-published EirGrid data. "
+            "Wind + solar always equals V2's total.\n\n"
+            "**Experimental:** it is live so its accuracy can be checked on new days nobody has seen yet. "
+            "Every response says `experimental: true`. Check the outcome later with "
+            "`/actuals/curtailment/sources`.\n\n"
+            "**Errors:** 422 for a future date, a date before 2024-04-01, missing forecast hours, or a date "
+            "beyond the bundled capacity data (the message says how to fix it); 503 when V2 or the "
+            "forecast provider is unavailable."
+        ),
+    )
+    def predict_source_split(request: SourceSplitRequest) -> dict[str, Any]:
+        split_service = app.state.source_allocation_service
+        if split_service is None:
+            raise HTTPException(status_code=503, detail="Experimental wind/solar split is unavailable (it requires V2)")
+        try:
+            return split_service.predict_date(request.target_date_utc)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except (OSError, TimeoutError) as error:
+            raise HTTPException(status_code=503, detail=f"Forecast source unavailable: {error}") from error
+
+    @app.get(
+        "/model-info/curtailment/sources",
+        dependencies=[Depends(require_api_key)],
+        tags=[TAG_SOURCE_SPLIT],
+        summary="Experimental wind/solar split: how it works, which dates work, and how accurate it is so far",
+        description=(
+            "No input. Explains the method in plain language, its formula and two fitted numbers, the "
+            "range of dates that can be requested, and its validation status. The 2026 accuracy figures "
+            "are marked provisional because that period was seen while the method was designed; the "
+            "`fresh_confirmation` block reports the unbiased check on newer days."
+        ),
+    )
+    def source_split_model_info() -> dict[str, Any]:
+        split_service = app.state.source_allocation_service
+        if split_service is None:
+            raise HTTPException(status_code=503, detail="Experimental wind/solar split is unavailable (it requires V2)")
+        return split_service.model_info()
 
     @app.get(
         "/model-info/daily-curtailment", dependencies=[Depends(require_api_key)], tags=[TAG_V2],
