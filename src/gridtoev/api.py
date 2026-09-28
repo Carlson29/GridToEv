@@ -14,6 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
 from .about import build_models_about
 from .formulas import v1_formulas, v2_formulas
+from .fitted_formulas import (
+    build_v1_fitted_manifest, build_v2_fitted_manifest,
+    export_v1_tree, export_v2_tree,
+)
 from .actuals import ActualsService
 from .constants import DEFAULT_DATASET_PATH, DEFAULT_MODEL_PATH
 from .daily_curtailment import DEFAULT_DAILY_DATASET, DEFAULT_HISTORY
@@ -48,7 +52,7 @@ V1's dataset replay endpoints use a **fixed historical dataset**. In particular,
 
 Send the shared `X-API-Key` using **Authorize** for protected routes. `GET /health` is public and shows whether optional v2 loaded. To compare a prediction with reality, copy `target_timestamp_utc` from v1 to `/actuals/v1`, or `target_date_utc` from v2 to `/actuals/daily-curtailment`. For ordered arrays, use `/actuals/v1/window` or `/actuals/daily-curtailment/window`. Actuals come from a separately refreshed EirGrid snapshot and may be `pending` or `missing`; raw forecast inputs cannot create actual outcomes.
 
-`GET /models/catalog` lists the two tasks. `GET /models/about` gives downstream backends compact, typed About-page facts for both models: targets, sources, date coverage, route data modes, tested accuracy and uncertainty limits. `GET /model-info/v1/formulas` and `GET /model-info/daily-curtailment/formulas` explain the nonlinear classifier/regressor forms and exact serving calculations with loaded parameters. Model-info scores are historical evaluations, **not the error of an individual prediction**. Raw-input routes validate shape and claimed availability times but cannot independently verify that caller-supplied values were truly published at those times; they do not fetch a live V1 source feed.
+`GET /models/catalog` lists the two tasks. `GET /models/about` gives downstream backends compact, typed About-page facts for both models: targets, sources, date coverage, route data modes, tested accuracy and uncertainty limits. `GET /model-info/v1/formulas` and `GET /model-info/daily-curtailment/formulas` explain final serving calculations. Their linked `/fitted-formulas` routes identify **every loaded classifier and regressor**, its ordered engineered inputs, fitted baseline/link and an endpoint for each complete numeric tree (split thresholds and leaf values). Model-info scores are historical evaluations, **not the error of an individual prediction**. Raw-input routes validate shape and claimed availability times but cannot independently verify that caller-supplied values were truly published at those times; they do not fetch a live V1 source feed.
 
 The prefilled **raw-input** request bodies demonstrate the **next target beyond each model dataset**, without adding that target or its outcome to the dataset. V1 uses the latest bundled source row to predict the next unrecorded half-hour; its example publication times are illustrative because the dataset does not preserve release receipts. V2 uses archived Open-Meteo day-ahead forecasts for the first day after its model dataset. These are frozen-dataset demos, **not forecasts for today's clock time**. Replace values and timestamps with genuinely available inputs for any new prediction. If you do not have all 49 V1 observations or 96 V2 forecasts, use the simpler dataset/weather-backed endpoints instead.
 """
@@ -518,6 +522,7 @@ class ModelAboutItem(BaseModel):
     uncertainty: ModelAboutUncertainty
     actuals_endpoint: str
     formulas_endpoint: str = Field(description="GET route with classification, regression and served-output equations for this model.")
+    fitted_formulas_endpoint: str = Field(description="GET manifest for the loaded estimators' actual fitted numeric tree rules and feature order.")
     limitations: list[str]
 
 
@@ -532,6 +537,7 @@ class ModelFormulasResponse(BaseModel):
     model_version: str
     target: str
     model_family: str
+    fitted_formulas_endpoint: str = Field(description="GET manifest for each fitted estimator's numeric tree splits, leaf values, inputs and outputs.")
     single_linear_equation_available: bool = Field(description="False: fitted tree ensembles are nonlinear; there is no short global coefficient formula.")
     estimator_functions: dict[str, str] = Field(description="Symbolic predictor call to fitted estimator class name.")
     estimator_equations: dict[str, str] = Field(description="General nonlinear ensemble form; tree splits, leaves and fitted values remain in the saved artifact.")
@@ -539,6 +545,70 @@ class ModelFormulasResponse(BaseModel):
     fitted_parameters: dict[str, Any] = Field(description="Actual serving thresholds, blend weights and method read from the loaded model.")
     steps: list[ModelFormulaStep] = Field(description="Classification and regression equations in serving order.")
     limitations: list[str]
+
+
+class FittedInputFeature(BaseModel):
+    name: str = Field(description="Saved engineered feature name; this is not an original source-data field.")
+    position: int = Field(description="Zero-based position in the saved pre-imputation model input.")
+    missing_fill_value: float | None = Field(description="V1 fitted median for missing values; null for V2, which rejects non-finite inputs.")
+
+
+class FittedEstimatorFormula(BaseModel):
+    id: str
+    estimator_class: str
+    task: Literal["classification", "regression"]
+    training_target: str = Field(description="The observed quantity fitted during training, including change or conditional-positive-day semantics.")
+    prediction_output: str = Field(description="What this estimator predicts before API serving arithmetic.")
+    output_unit: str
+    serving_role: str = Field(description="How its result contributes to the response; some fitted outputs have zero point-serving weight.")
+    formula: str = Field(description="Actual fitted baseline, tree count, aggregation and inverse link; tree values are accessible individually.")
+    baseline_raw_score: float | None
+    aggregation: Literal["sum", "mean"]
+    inverse_link: Literal["sigmoid", "exp", "identity"]
+    tree_count: int
+    tree_endpoint_template: str = Field(description="Replace {tree_index} with an integer from 0 to tree_count - 1.")
+    serving_weight_by_horizon: dict[str, float] | None
+
+
+class FittedFormulaManifest(BaseModel):
+    schema_version: Literal["1.0"]
+    model_id: Literal["v1", "v2"]
+    model_version: str
+    target: str
+    input_kind: str
+    input_features: list[FittedInputFeature]
+    transformed_features: list[str] = Field(description="Tree split feature_index addresses this zero-based list after preprocessing.")
+    preprocessing: str
+    estimators: list[FittedEstimatorFormula]
+    serving_formulas_endpoint: str = Field(description="Existing endpoint for clipping, probability/amount combination and other final response calculations.")
+    raw_input_schema_endpoint: str
+    interpretation: str
+    limitation: str = Field(description="These are predictive, not causal intervention formulas.")
+
+
+class FittedTreeNode(BaseModel):
+    node_id: int
+    is_leaf: bool
+    value: float | None = Field(description="Numeric fitted output at a leaf: additive raw score for boosted trees or MWh for Extra Trees.")
+    sample_count: int
+    feature_index: int | None
+    feature_name: str | None
+    threshold: float | None
+    left_child: int | None
+    right_child: int | None
+    missing_go_to_left: bool | None
+
+
+class FittedTreeResponse(BaseModel):
+    schema_version: Literal["1.0"]
+    model_id: Literal["v1", "v2"]
+    model_version: str
+    estimator_id: str
+    tree_index: int
+    tree_count: int
+    value_meaning: str
+    branch_rule: str
+    nodes: list[FittedTreeNode]
 
 
 class ModelAboutIntegrationNotes(BaseModel):
@@ -732,6 +802,7 @@ def create_app(
                     "details_endpoint": "/model-info",
                     "about_endpoint": "/models/about",
                     "formulas_endpoint": "/model-info/v1/formulas",
+                    "fitted_formulas_endpoint": "/model-info/v1/fitted-formulas",
                     "raw_input_schema_endpoint": "/model-info/v1/raw-input-schema",
                     "raw_prediction_endpoint": "/predict/v1/from-raw",
                 },
@@ -742,6 +813,7 @@ def create_app(
                     "details_endpoint": "/model-info/daily-curtailment",
                     "about_endpoint": "/models/about",
                     "formulas_endpoint": "/model-info/daily-curtailment/formulas",
+                    "fitted_formulas_endpoint": "/model-info/daily-curtailment/fitted-formulas",
                     "raw_input_schema_endpoint": "/model-info/daily-curtailment/raw-input-schema",
                     "raw_prediction_endpoint": "/predict/curtailment/from-raw",
                 },
@@ -790,6 +862,44 @@ def create_app(
     )
     def v1_model_formulas() -> dict[str, Any]:
         return v1_formulas(prediction_service.model_info(), prediction_service.metadata)
+
+    @app.get(
+        "/model-info/v1/fitted-formulas",
+        response_model=FittedFormulaManifest,
+        dependencies=[Depends(require_api_key)], tags=[TAG_V1],
+        summary="V1 actual fitted classifier and regressor formulas, inputs and outputs",
+        description=(
+            "No input. Lists all seven loaded V1 estimators, the 119 saved engineered input features "
+            "in order, fitted median imputation, each estimator's observed training target, "
+            "predicted output, numerical baseline, inverse link and number of fitted trees. "
+            "Each tree is available at its tree_endpoint_template. Use /model-info/v1/formulas "
+            "for the *final* 30/60-minute output calculation. This is not a prediction or a "
+            "causal extra-curtailment formula."
+        ),
+    )
+    def v1_fitted_formulas() -> dict[str, Any]:
+        return build_v1_fitted_manifest(prediction_service._ensure_loaded())
+
+    @app.get(
+        "/model-info/v1/fitted-formulas/{estimator_id}/trees/{tree_index}",
+        response_model=FittedTreeResponse,
+        dependencies=[Depends(require_api_key)], tags=[TAG_V1],
+        summary="One V1 fitted tree: exact feature thresholds and leaf values",
+        description=(
+            "Path inputs: estimator_id from /model-info/v1/fitted-formulas and zero-based "
+            "tree_index from 0 through tree_count - 1. Returns one complete numeric "
+            "piecewise tree, including split feature, threshold, child nodes and leaf "
+            "raw-score contribution. Sum every tree with the listed baseline and apply "
+            "that estimator's inverse link to reconstruct its ML output. V1 median "
+            "imputation and the final serving arithmetic are separate steps. Unknown "
+            "estimator or out-of-range index returns 404."
+        ),
+    )
+    def v1_fitted_tree(estimator_id: str, tree_index: int) -> dict[str, Any]:
+        try:
+            return export_v1_tree(prediction_service._ensure_loaded(), estimator_id, tree_index)
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
     @app.get(
         "/model-info/v1/raw-input-schema",
@@ -1022,6 +1132,51 @@ def create_app(
         if available_service is None:
             raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
         return v2_formulas(available_service.model_info())
+
+    @app.get(
+        "/model-info/daily-curtailment/fitted-formulas",
+        response_model=FittedFormulaManifest,
+        dependencies=[Depends(require_api_key)], tags=[TAG_V2],
+        summary="V2 actual fitted daily classifier and amount formulas, inputs and outputs",
+        description=(
+            "No input. Lists the two loaded V2 estimators, all 24 engineered regional "
+            "weather/calendar inputs in saved order, observed training targets, "
+            "fitted classifier baseline/link and amount-tree averaging. Each exact tree "
+            "is available at its tree_endpoint_template; /model-info/daily-curtailment/formulas "
+            "shows the final probability-times-amount step. Returns 503 when V2 is disabled. "
+            "It predicts observed daily curtailment, not extra curtailment caused by EV charging."
+        ),
+    )
+    def v2_fitted_formulas() -> dict[str, Any]:
+        available_service = app.state.daily_curtailment_service
+        if available_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
+        assert available_service.bundle is not None
+        return build_v2_fitted_manifest(available_service.bundle)
+
+    @app.get(
+        "/model-info/daily-curtailment/fitted-formulas/{estimator_id}/trees/{tree_index}",
+        response_model=FittedTreeResponse,
+        dependencies=[Depends(require_api_key)], tags=[TAG_V2],
+        summary="One V2 fitted tree: exact weather-feature thresholds and leaf values",
+        description=(
+            "Path inputs: event_model or amount_model, and a zero-based tree_index less than "
+            "the manifest's tree_count. Returns one complete fitted numeric tree. V2's "
+            "classifier adds tree leaf scores to its fitted baseline then applies sigmoid; "
+            "its current Extra Trees amount model averages all 240 trees. The existing "
+            "/formulas endpoint explains final daily MWh. Unknown estimator or index "
+            "returns 404; disabled V2 returns 503."
+        ),
+    )
+    def v2_fitted_tree(estimator_id: str, tree_index: int) -> dict[str, Any]:
+        available_service = app.state.daily_curtailment_service
+        if available_service is None:
+            raise HTTPException(status_code=503, detail="Optional daily model is unavailable")
+        assert available_service.bundle is not None
+        try:
+            return export_v2_tree(available_service.bundle, estimator_id, tree_index)
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
     @app.get(
         "/model-info/daily-curtailment/raw-input-schema",

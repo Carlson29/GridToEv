@@ -23,6 +23,7 @@ def v1_formulas(info: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any
         "model_version": info["model_version"],
         "target": "Renewable dispatch-down MWh in one target half-hour, 30 or 60 minutes after issue",
         "model_family": "Histogram gradient-boosted classifier and regressors, plus fitted trend/ML serving policy",
+        "fitted_formulas_endpoint": "/model-info/v1/fitted-formulas",
         "single_linear_equation_available": False,
         "estimator_functions": {
             "event_classifier.predict_proba(X)[1]": components["event_classifier"]["estimator"],
@@ -36,7 +37,9 @@ def v1_formulas(info: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any
         },
         "estimator_equations": {
             "event_classifier": "p(X) = 1 / (1 + exp(-F(X))); F(X) = initial_log_odds + sum(fitted_tree_contribution_k(X))",
-            "point_and_component_regressors": "y_hat(X) = initial_prediction + sum(fitted_tree_contribution_k(X))",
+            "point_regressor": "delta_hat(X) = initial_prediction + sum(fitted_tree_contribution_k(X)); squared-error identity link",
+            "component_regressors": "component_hat(X) = exp(initial_log_prediction + sum(fitted_tree_contribution_k(X))); Poisson log link",
+            "point_and_component_regressors": "The point regressor uses the identity link; curtailment and constraint regressors use the Poisson exp link. See point_regressor and component_regressors.",
             "quantile_regressors": "q_hat(X) = initial_quantile_prediction + sum(fitted_tree_contribution_k(X))",
         },
         "symbols": {
@@ -72,7 +75,7 @@ def v1_formulas(info: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any
         ],
         "limitations": [
             "The fitted tree splits and leaf values are stored in the trusted model artifact; they have no short global regression coefficients or logistic formula.",
-            "The tree-ensemble equations describe model structure, not exported tree splits, leaf values or an independent reimplementation of the saved estimators.",
+            "The linked /fitted-formulas manifest and per-tree endpoints expose the fitted numeric splits and leaf values; this endpoint describes their post-estimator serving arithmetic.",
             "These equations describe outputs after feature engineering, not how to reconstruct X from raw source observations.",
             "Scores on /model-info are historical test metrics, not exact error bounds for an individual result.",
         ],
@@ -98,6 +101,7 @@ def v2_formulas(info: dict[str, Any]) -> dict[str, Any]:
         "model_version": info["model_version"],
         "target": "Renewable curtailment MWh over one complete UTC day",
         "model_family": f"{components['event_model']['estimator']} event classifier and {components['amount_model']['estimator']} amount regressor",
+        "fitted_formulas_endpoint": "/model-info/daily-curtailment/fitted-formulas",
         "single_linear_equation_available": False,
         "estimator_functions": {
             "event_model.predict_proba(X)[1]": components["event_model"]["estimator"],
@@ -123,7 +127,7 @@ def v2_formulas(info: dict[str, Any]) -> dict[str, Any]:
             _step("predicted_curtailment_mwh", amount_expression, "The selected serving method combines event probability and the amount estimate." if method == "two_stage" else "The selected serving method uses the nonnegative amount estimate directly."),
         ],
         "limitations": [
-            "These nonlinear tree ensembles have no short global regression coefficients or logistic formula; fitted splits and leaves are in the trusted model artifact.",
+            "These nonlinear tree ensembles have no short global coefficient formula; the linked /fitted-formulas routes expose the loaded artifact's numeric tree splits and leaves.",
             "This predicts daily curtailment only, not constraints or half-hour dispatch-down.",
             "No calibrated daily MWh prediction interval or thresholded event label is served.",
         ],
