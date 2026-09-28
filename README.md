@@ -4,6 +4,15 @@ This repository prepares energy data, trains the GridToEV forecasting models, an
 through FastAPI. V1 forecasts renewable dispatch-down in Ireland 30 or 60 minutes ahead. Experimental
 V2 separately forecasts curtailment probability and total MWh for a full UTC day.
 
+For a proposed wind/solar breakdown of predicted curtailment, see the
+[source-curtailment attribution handoff](docs/SOURCE_CURTAILMENT_ATTRIBUTION_HANDOFF.md).
+It documents verified raw EirGrid labels, the leakage-safe implementation sequence, and release
+gates. Audited Wind/Solar labels are built by `scripts/build_source_curtailment_labels.py`. Recorded
+wind/solar curtailment for any past day is served by `GET /actuals/curtailment/sources` (plain-English
+guide: [`docs/SOURCE_CURTAILMENT_API.md`](docs/SOURCE_CURTAILMENT_API.md)). An **experimental**
+wind/solar split of V2's daily forecast is served at `POST /predict/curtailment/sources/day` while it is
+confirmed on new days (`scripts/evaluate_daily_source_allocation.py`).
+
 The notebooks are:
 
 - `notebooks/01_build_model_ready_dataset.ipynb`

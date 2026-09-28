@@ -1,0 +1,12 @@
+column,role,unit,source,dtype
+timestamp_utc,identifier,UTC half-hour start,EirGrid DD HH HH_TIMESTAMP minus GMT_OFFSET,"datetime64[ns, UTC]"
+wind_curtailment_mwh,label,MWh per half-hour,EirGrid DD HH Sum of CURTAILMENTS_MWH (IE Wind); NaN if unreported,float64
+wind_constraint_mwh,diagnostic,MWh per half-hour,EirGrid DD HH Sum of CONSTRAINTS_MWH (IE Wind); NaN if unreported,float64
+wind_dispatch_down_mwh,diagnostic,MWh per half-hour,EirGrid DD HH Sum of DD_MWH (IE Wind); NaN if unreported,float64
+wind_reported_flag,availability,0/1,1 when EirGrid published an IE Wind row for the interval,int8
+solar_curtailment_mwh,label,MWh per half-hour,EirGrid DD HH Sum of CURTAILMENTS_MWH (IE Solar); NaN if unreported (all intervals before 2023-03-31T23:00Z),float64
+solar_constraint_mwh,diagnostic,MWh per half-hour,EirGrid DD HH Sum of CONSTRAINTS_MWH (IE Solar); NaN if unreported,float64
+solar_dispatch_down_mwh,diagnostic,MWh per half-hour,EirGrid DD HH Sum of DD_MWH (IE Solar); NaN if unreported,float64
+solar_reported_flag,availability,0/1,1 when EirGrid published an IE Solar row for the interval,int8
+source_labels_complete_flag,availability,0/1,1 when both Wind and Solar rows were published,int8
+source_curtailment_total_mwh,label,MWh per half-hour,Wind + Solar curtailment; NaN unless complete; reconciles with core curtailment_mwh,float64

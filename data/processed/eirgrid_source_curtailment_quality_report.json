@@ -1,0 +1,201 @@
+{
+  "jurisdiction": "IE",
+  "technologies": [
+    "Wind",
+    "Solar"
+  ],
+  "unit": "MWh per UTC half-hour",
+  "missing_versus_zero_rule": "An unreported technology interval is NaN (unknown), never zero. A reported numeric zero is kept as zero.",
+  "rows": 99310,
+  "first_interval_utc": "2021-01-01T00:00:00+00:00",
+  "last_interval_utc": "2026-08-31T22:30:00+00:00",
+  "first_complete_interval_utc": "2023-03-31T23:00:00+00:00",
+  "last_complete_interval_utc": "2026-08-31T22:30:00+00:00",
+  "complete_half_hours": 59952,
+  "duplicate_natural_keys": 0,
+  "by_year": {
+    "2021": {
+      "half_hours": 17520,
+      "wind": {
+        "reported_half_hours": 17520,
+        "missing_half_hours": 0,
+        "first_reported_utc": "2021-01-01T00:00:00+00:00",
+        "last_reported_utc": "2021-12-31T23:30:00+00:00",
+        "curtailment_mwh": 291411.869,
+        "positive_curtailment_half_hours": 3250
+      },
+      "solar": {
+        "reported_half_hours": 0,
+        "missing_half_hours": 17520,
+        "first_reported_utc": null,
+        "last_reported_utc": null,
+        "curtailment_mwh": 0.0,
+        "positive_curtailment_half_hours": 0
+      },
+      "complete_half_hours": 0,
+      "solar_share_of_complete_curtailment": null
+    },
+    "2022": {
+      "half_hours": 17520,
+      "wind": {
+        "reported_half_hours": 17520,
+        "missing_half_hours": 0,
+        "first_reported_utc": "2022-01-01T00:00:00+00:00",
+        "last_reported_utc": "2022-12-31T23:30:00+00:00",
+        "curtailment_mwh": 412827.404,
+        "positive_curtailment_half_hours": 3226
+      },
+      "solar": {
+        "reported_half_hours": 0,
+        "missing_half_hours": 17520,
+        "first_reported_utc": null,
+        "last_reported_utc": null,
+        "curtailment_mwh": 0.0,
+        "positive_curtailment_half_hours": 0
+      },
+      "complete_half_hours": 0,
+      "solar_share_of_complete_curtailment": null
+    },
+    "2023": {
+      "half_hours": 17520,
+      "wind": {
+        "reported_half_hours": 17520,
+        "missing_half_hours": 0,
+        "first_reported_utc": "2023-01-01T00:00:00+00:00",
+        "last_reported_utc": "2023-12-31T23:30:00+00:00",
+        "curtailment_mwh": 594595.173,
+        "positive_curtailment_half_hours": 4078
+      },
+      "solar": {
+        "reported_half_hours": 13202,
+        "missing_half_hours": 4318,
+        "first_reported_utc": "2023-03-31T23:00:00+00:00",
+        "last_reported_utc": "2023-12-31T23:30:00+00:00",
+        "curtailment_mwh": 9548.067,
+        "positive_curtailment_half_hours": 2000
+      },
+      "complete_half_hours": 13202,
+      "solar_share_of_complete_curtailment": 0.020803
+    },
+    "2024": {
+      "half_hours": 17568,
+      "wind": {
+        "reported_half_hours": 17568,
+        "missing_half_hours": 0,
+        "first_reported_utc": "2024-01-01T00:00:00+00:00",
+        "last_reported_utc": "2024-12-31T23:30:00+00:00",
+        "curtailment_mwh": 627439.572,
+        "positive_curtailment_half_hours": 4323
+      },
+      "solar": {
+        "reported_half_hours": 17568,
+        "missing_half_hours": 0,
+        "first_reported_utc": "2024-01-01T00:00:00+00:00",
+        "last_reported_utc": "2024-12-31T23:30:00+00:00",
+        "curtailment_mwh": 32005.759,
+        "positive_curtailment_half_hours": 3681
+      },
+      "complete_half_hours": 17568,
+      "solar_share_of_complete_curtailment": 0.048534
+    },
+    "2025": {
+      "half_hours": 17520,
+      "wind": {
+        "reported_half_hours": 17520,
+        "missing_half_hours": 0,
+        "first_reported_utc": "2025-01-01T00:00:00+00:00",
+        "last_reported_utc": "2025-12-31T23:30:00+00:00",
+        "curtailment_mwh": 613657.078,
+        "positive_curtailment_half_hours": 4795
+      },
+      "solar": {
+        "reported_half_hours": 17520,
+        "missing_half_hours": 0,
+        "first_reported_utc": "2025-01-01T00:00:00+00:00",
+        "last_reported_utc": "2025-12-31T23:30:00+00:00",
+        "curtailment_mwh": 89272.111,
+        "positive_curtailment_half_hours": 3564
+      },
+      "complete_half_hours": 17520,
+      "solar_share_of_complete_curtailment": 0.127
+    },
+    "2026": {
+      "half_hours": 11662,
+      "wind": {
+        "reported_half_hours": 11662,
+        "missing_half_hours": 0,
+        "first_reported_utc": "2026-01-01T00:00:00+00:00",
+        "last_reported_utc": "2026-08-31T22:30:00+00:00",
+        "curtailment_mwh": 453812.528,
+        "positive_curtailment_half_hours": 2340
+      },
+      "solar": {
+        "reported_half_hours": 11662,
+        "missing_half_hours": 0,
+        "first_reported_utc": "2026-01-01T00:00:00+00:00",
+        "last_reported_utc": "2026-08-31T22:30:00+00:00",
+        "curtailment_mwh": 106978.301,
+        "positive_curtailment_half_hours": 2306
+      },
+      "complete_half_hours": 11662,
+      "solar_share_of_complete_curtailment": 0.190763
+    }
+  },
+  "daily": {
+    "complete_days": 1248,
+    "first_day_utc": "2023-04-01",
+    "last_day_utc": "2026-08-30",
+    "positive_curtailment_days": 668,
+    "positive_solar_curtailment_days": 613
+  },
+  "sources": [
+    {
+      "source_id": "eirgrid_dispatch_down_2021",
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2021.xlsx",
+      "sha256": "b06580d7884770fe6317ce68e9e6b024df26c7bd0dc691dec31562080ad0e0a5"
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2022",
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2022.xlsx",
+      "sha256": "64728bbb131721cbe2068a1ad77ec61c32b00d6513f438426a8234e64fa2b975"
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2023",
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2023.xlsx",
+      "sha256": "69a8e33d13928def12a68fd45674ba3b81c5d30fedf726cd36fe49f4c73ddb24"
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2024",
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2024.xlsx",
+      "sha256": "6be9b73ac140d8c52d634720efc4b3fa284f57bae59852892f421e617dd9199f"
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2025",
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2025-v10.xlsx",
+      "sha256": "78ea2262da0deff153e49201d0103aeb3ac30b68dbc612ac9096eaf88efc4dbb"
+    },
+    {
+      "source_id": "eirgrid_dispatch_down_2026",
+      "url": "https://cms.eirgrid.ie/sites/default/files/publications/DD-HH-2026-V9.xlsx",
+      "sha256": "b641876ea690ca5c4ffc180b8ba99cac80518ee164caa0191bacd6b5b528c1bb"
+    }
+  ],
+  "core_reconciliation": {
+    "tolerance_mwh": 0.05,
+    "complete_rows_compared": 59952,
+    "complete_rows_missing_core_total": 0,
+    "max_abs_difference_mwh": 2.2737367544323206e-13,
+    "wind_only_rows_compared": 39358,
+    "wind_only_max_abs_difference_mwh": 5.684341886080802e-14
+  },
+  "v2_daily_reconciliation": {
+    "v2_days": 882,
+    "matched_days": 882,
+    "v2_days_without_complete_source_labels": [],
+    "max_abs_difference_mwh": 3.637978807091713e-12
+  },
+  "outputs": [
+    "data/processed/eirgrid_source_curtailment_30min.csv.gz",
+    "data/processed/eirgrid_source_curtailment_daily.csv"
+  ]
+}

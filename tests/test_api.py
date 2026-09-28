@@ -110,6 +110,10 @@ class ApiTests(unittest.TestCase):
             "/actuals/v1/window": "Observed outcomes",
             "/actuals/daily-curtailment": "Observed outcomes",
             "/actuals/daily-curtailment/window": "Observed outcomes",
+            "/actuals/curtailment/sources": "Observed curtailment by source (Wind/Solar)",
+            "/actuals/curtailment/sources/coverage": "Observed curtailment by source (Wind/Solar)",
+            "/predict/curtailment/sources/day": "V2 — wind/solar split (experimental)",
+            "/model-info/curtailment/sources": "V2 — wind/solar split (experimental)",
         }
         self.assertEqual(set(schema["paths"]), set(expected_tags))
         for path, expected_tag in expected_tags.items():
