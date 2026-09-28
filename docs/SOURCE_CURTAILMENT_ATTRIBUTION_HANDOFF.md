@@ -36,7 +36,7 @@ Official sources: [EirGrid system and renewable reports](https://www.eirgrid.ie/
 
 ### 1. Freeze the prediction contract before modelling
 
-Decide and document whether the first deliverable attaches to V2 daily curtailment, V1 30/60-minute curtailment, or both. Recommended order: build and validate source labels for both grains, prototype **daily V2 first** because it has a longer solar-era feature window, then attempt V1 only if matched issue-time rows and held-out skill suffice. Do not change either parent's fitted artifact or existing route response while developing. Publish the split as optional/new output until it clears release gates.
+The final feature needs **one new prediction endpoint for each model**: one for V1's 30/60-minute curtailment-by-source prediction and one for V2's daily curtailment-by-source prediction. Recommended order: build and validate source labels for both grains, prototype **daily V2 first** because it has a longer solar-era feature window, then attempt V1 only if matched issue-time rows and held-out skill suffice. Do not change either parent's fitted artifact. **Do not edit, replace, wrap, or extend any existing endpoint, request schema, response schema, default, validation rule, or route documentation.** Keep all existing V1/V2 prediction and actuals routes working exactly as before. Add the two new routes only after their respective evidence gates pass; an unvalidated route must stay unavailable.
 
 For each output, define `jurisdiction=IE`, `target_timestamp_utc` or `target_date_utc`, `target_kind=curtailment`, `unit=MWh`, `source=Wind|Solar`, `model_version`, `label_coverage`, and whether the result is `predicted`, `observed`, or `unavailable`. Reserve an `other_or_unattributed_mwh` field only if the audited source taxonomy actually requires it. Never relabel imported electricity as a generator type.
 
@@ -77,14 +77,16 @@ Release gate: source labels reconcile; no as-of or target leakage; source output
 
 ### 6. Expose only validated results and observed comparisons
 
-After the gate passes, add additive versioned endpoints or an explicit opt-in response, for example V1 `/predict/v1/curtailment/sources` and V2 `/predict/curtailment/sources/day`, without changing existing route defaults. Each response should include the parent target and horizon, parent predicted total, per-source predicted MWh, sum/reconciliation, model/label version, training cutoff, and plain-language limitations. Add matched `/actuals/.../sources` retrieval only for archived labelled timestamps/days, plus `/model-info/.../sources` with held-out per-source metrics and coverage. Document `unavailable` when a date is outside complete label coverage; do not return a plausible zero for a missing source. Keep the API-key and artifact-integrity conventions used by current routes.
+After the gate passes, create **two entirely new, separately documented prediction endpoints**; do not modify any existing endpoint or make source attribution an opt-in field on an existing response. Suggested paths are V1 `POST /predict/v1/curtailment/sources` and V2 `POST /predict/curtailment/sources/day` (check route collisions before implementation). The V1 request must take an `issue_timestamp_utc` in ISO 8601 UTC form and `forecast_horizon_minutes` of 30 or 60, plus any additional *issue-time-available* raw values or a clearly named archived-dataset lookup selector that its feature builder actually requires. The V2 request must take a `target_date_utc` in `YYYY-MM-DD` UTC form, plus any additional archived day-ahead/issue-time inputs or validated raw values its feature builder actually requires. Choose and document the exact request contract after inspecting the parent feature builders; do not invent unavailable live data or silently fill required inputs from future observations. For each new route, document its model, target period, data coverage, required/optional fields with units and realistic examples, valid date/horizon rules, historical versus genuinely forward-looking mode, and errors for unavailable inputs or out-of-coverage dates.
+
+Each new response should include the parent target and horizon/day, parent predicted **curtailment** total, predicted Wind and Solar MWh, sum/reconciliation, model and label versions, training cutoff, and plain-language limitations. If the audited taxonomy requires another category, include it explicitly rather than forcing it into Solar. Create *new* matched `/actuals/.../sources` and `/model-info/.../sources` routes only if needed for archived labelled outcomes and held-out metrics; never alter the existing actuals or model-info endpoints. Document `unavailable` when a date is outside complete label coverage; do not return a plausible zero for a missing source. Reuse the existing API-key and artifact-integrity conventions without changing the behavior of current routes.
 
 ### 7. Tests, docs, and deliverables
 
 - Unit tests: `UT_TYPE` mapping, unique UTC keys and DST conversion, missing-versus-zero, 2023 partial solar, 48-row daily completeness, non-negativity, source/parent reconciliation, and unknown taxonomy.
 - Leakage tests: forecast publication times and source observations cannot exceed issue time; the target's total/source labels are absent from feature columns; training and holdout intervals do not overlap.
 - Model tests: zero-parent prediction returns zero components; positive predictions conserve MWh; artifacts reproduce fixed fixture predictions; held-out metrics and hashes match the saved report.
-- API tests: schema/help text, auth, valid and missing dates, V1/V2 separation, opt-in/off behavior, historical actual-source retrieval, and no regression to existing endpoints.
+- API tests: both *new* request schemas/help text, auth, valid and missing dates, V1/V2 separation, unavailable/off behavior, historical actual-source retrieval if added, and snapshot/regression tests proving all existing endpoints and their schemas are unchanged.
 - Deliverables: labelled table plus data dictionary/quality report, a reproducible build/training script and commented notebook, a versioned model artifact and benchmark report, API/docs changes only after the gate, and a PR that states which gates passed or failed.
 
 ## Suggested code entry points
@@ -96,7 +98,7 @@ After the gate passes, add additive versioned endpoints or an explicit opt-in re
 | Daily target rollup | `src/gridtoev/daily_curtailment.py` | Sum only complete UTC days of source labels. |
 | V1 / V2 predictions | `src/gridtoev/inference.py`, `src/gridtoev/daily_model.py` | Read parent predicted **curtailment** total, never dispatch-down total by accident. |
 | Model training / evaluation | `scripts/train_models.py`, `scripts/train_daily_curtailment_model.py`, `src/gridtoev/benchmarking.py` | New independent allocator artifact/report with chronology and baselines. |
-| API / tests | `src/gridtoev/api.py`, `tests/test_eirgrid_history.py`, `tests/test_daily_model.py`, `tests/test_api.py` | Add optional routes and observed-source comparisons only after validation. |
+| API / tests | `src/gridtoev/api.py`, `tests/test_eirgrid_history.py`, `tests/test_daily_model.py`, `tests/test_api.py` | Add two new, separate source-prediction routes only after validation; preserve every existing endpoint unchanged. |
 
 ## Handoff boundary
 
