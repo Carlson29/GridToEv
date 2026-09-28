@@ -9,7 +9,9 @@ from gridtoev.api import create_app
 from gridtoev.source_allocation import (
     BASELINES,
     CANDIDATES,
+    add_physics_features,
     allocate,
+    capacity_proxies,
     feature_columns,
     fit_share_candidates,
     load_dataset,
@@ -20,6 +22,10 @@ from gridtoev.source_allocation import (
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "benchmarks" / "daily_source_allocation_v2" / "evaluation.json"
+PHYSICS_COLUMNS = [
+    "solar_capacity_proxy_mw", "wind_capacity_proxy_mw", "capacity_proxy_through_utc",
+    "solar_energy_proxy_mwh", "wind_energy_proxy_mwh", "physics_log_ratio",
+]
 SOURCE_ROUTES = {"/predict/v1/curtailment/sources", "/predict/curtailment/sources/day"}
 
 
@@ -100,6 +106,51 @@ class AllocationReportTests(unittest.TestCase):
         paths = {route.path for route in create_app().routes}
         # The handoff forbids serving an allocator that has not passed its gate.
         self.assertFalse(SOURCE_ROUTES & paths)
+
+
+class PhysicsExperimentTests(unittest.TestCase):
+    def test_capacity_proxy_reads_only_published_months(self) -> None:
+        history = pd.DataFrame({
+            "timestamp_utc": pd.date_range("2024-01-01", "2024-12-31 23:30", freq="30min", tz="UTC"),
+        })
+        # Availability equals the day of year, so the proxy reveals which day it read.
+        history["eirgrid_ie_solar_availability_mw"] = history["timestamp_utc"].dt.dayofyear.astype(float)
+        history["eirgrid_ie_wind_availability_mw"] = 1.0
+        issues = pd.Series(pd.to_datetime(["2024-09-01", "2024-09-30"], utc=True))
+        proxy = capacity_proxies(history, issues)
+        # Issue days in September may only use data through 31 July (month M-2).
+        self.assertEqual(proxy["capacity_proxy_through_utc"].dt.strftime("%Y-%m-%d").tolist(), ["2024-07-31", "2024-07-31"])
+        self.assertEqual(proxy["solar_capacity_proxy_mw"].tolist(), [213.0, 213.0])
+
+    def test_physics_share_grows_with_forecast_wind(self) -> None:
+        data = load_dataset().head(3).copy()
+        history = pd.read_csv(ROOT / "data/processed/eirgrid_core_history_30min.csv.gz",
+                              usecols=["timestamp_utc", "eirgrid_ie_solar_availability_mw", "eirgrid_ie_wind_availability_mw"])
+        featured = add_physics_features(data, history)
+        self.assertTrue(featured["physics_log_ratio"].notna().all())
+        calm, windy = featured.iloc[[0]].copy(), featured.iloc[[0]].copy()
+        for region_column in [column for column in featured if column.endswith("_wind_mean_kmh")]:
+            calm[region_column], windy[region_column] = 15.0, 40.0
+        self.assertLess(
+            float(add_physics_features(calm.drop(columns=PHYSICS_COLUMNS), history)["physics_log_ratio"].iloc[0]),
+            float(add_physics_features(windy.drop(columns=PHYSICS_COLUMNS), history)["physics_log_ratio"].iloc[0]),
+        )
+
+    def test_physics_report_waits_for_fresh_confirmation(self) -> None:
+        report = json.loads((ROOT / "benchmarks/daily_source_allocation_v2/physics_evaluation.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["selected_on_validation"], "physics_share")
+        gate = report["release_gate"]
+        self.assertTrue(gate["test_2026"]["beats_best_baseline"])
+        self.assertTrue(gate["test_2026"]["holdout_viewed_during_design"])
+        self.assertEqual(gate["fresh_confirmation"]["status"], "pending")
+        self.assertFalse(gate["passed"])
+        self.assertEqual(report["status"], "candidate_awaiting_fresh_confirmation")
+        import hashlib
+
+        self.assertEqual(
+            hashlib.sha256((ROOT / "data/processed/eirgrid_core_history_30min.csv.gz").read_bytes()).hexdigest(),
+            report["inputs"]["capacity_history_sha256"],
+        )
 
 
 if __name__ == "__main__":

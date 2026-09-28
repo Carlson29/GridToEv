@@ -40,6 +40,25 @@ CANDIDATES = (
 # Fixed before scoring the 2026 test: a learned allocator must beat the best
 # baseline's combined source MAE and must not lose >5% on solar-active days.
 SOLAR_ACTIVE_TOLERANCE = 1.05
+
+# Experiment 2: physics-informed share. Every constant below was fixed before
+# the experiment was scored and must not be tuned against its results.
+PHYSICS_REPORT = PROJECT_ROOT / "benchmarks" / "daily_source_allocation_v2" / "physics_evaluation.json"
+PHYSICS_CANDIDATE = "physics_share"
+DEFAULT_HISTORY = PROJECT_ROOT / "data" / "processed" / "eirgrid_core_history_30min.csv.gz"
+# EirGrid system workbooks are republished monthly (for example V8, covering
+# data through 31 August, was retrieved on 23 September). Month M-2 is therefore
+# published before any issue day in month M.
+CAPACITY_PUBLICATION_MONTHS = 2
+# A full year always contains a summer peak, so the maximum measures installed
+# capacity rather than the season's sunshine.
+CAPACITY_WINDOW_DAYS = 365
+WIND_CUT_IN_MS = 3.0
+WIND_RATED_MS = 12.0
+WIND_CURVE_EXPONENT = 1.5
+# Fresh days never seen while designing experiment 2; the gate needs them.
+CONFIRMATION_START = pd.Timestamp("2026-08-31T00:00:00Z")
+MIN_CONFIRMATION_DAYS = 60
 LABEL_COLUMNS = {"wind_curtailment_mwh", "solar_curtailment_mwh", "source_curtailment_total_mwh", "wind_share"}
 
 
@@ -64,6 +83,58 @@ def feature_columns(frame: pd.DataFrame) -> list[str]:
     if leaked:
         raise ValueError(f"Label columns cannot be features: {sorted(leaked)}")
     return columns
+
+
+def capacity_proxies(history: pd.DataFrame, issue_days: pd.Series) -> pd.DataFrame:
+    """Installed-capacity proxies known at each 00:00 UTC issue.
+
+    Uses the maximum IE wind/solar availability over the 365 days ending on the
+    last day of calendar month M-2, so only already-published months are read.
+    """
+
+    frame = history[["timestamp_utc", "eirgrid_ie_solar_availability_mw", "eirgrid_ie_wind_availability_mw"]].copy()
+    frame["timestamp_utc"] = pd.to_datetime(frame["timestamp_utc"], utc=True)
+    daily = frame.set_index("timestamp_utc").resample("D").max()
+    trailing = daily.rolling(f"{CAPACITY_WINDOW_DAYS}D", min_periods=CAPACITY_WINDOW_DAYS // 2).max()
+    days = pd.to_datetime(issue_days, utc=True)
+    through = (
+        days.dt.tz_localize(None).dt.to_period("M") - CAPACITY_PUBLICATION_MONTHS
+    ).dt.end_time.dt.normalize().dt.tz_localize("UTC")
+    looked_up = trailing.reindex(through.to_numpy())
+    return pd.DataFrame({
+        "solar_capacity_proxy_mw": looked_up["eirgrid_ie_solar_availability_mw"].to_numpy(),
+        "wind_capacity_proxy_mw": looked_up["eirgrid_ie_wind_availability_mw"].to_numpy(),
+        "capacity_proxy_through_utc": through.to_numpy(),
+    }, index=issue_days.index)
+
+
+def add_physics_features(data: pd.DataFrame, history: pd.DataFrame) -> pd.DataFrame:
+    """Forecast wind vs solar energy, each scaled by its published capacity proxy."""
+
+    columns = feature_columns(data)
+    result = data.join(capacity_proxies(history, data["issue_timestamp_utc"]))
+    if result[["solar_capacity_proxy_mw", "wind_capacity_proxy_mw"]].isna().any().any():
+        raise ValueError("Capacity proxy history does not cover every issue day")
+    # Mean regional daily irradiance in kWh/m2 is peak-sun-hours per MW installed.
+    sun_hours = result[[column for column in columns if column.endswith("_solar_sum_wm2h")]].mean(axis=1) / 1000
+    wind_ms = result[[column for column in columns if column.endswith("_wind_mean_kmh")]].mean(axis=1) / 3.6
+    capacity_factor = np.clip((wind_ms - WIND_CUT_IN_MS) / (WIND_RATED_MS - WIND_CUT_IN_MS), 0, 1) ** WIND_CURVE_EXPONENT
+    result["solar_energy_proxy_mwh"] = result["solar_capacity_proxy_mw"] * sun_hours
+    result["wind_energy_proxy_mwh"] = result["wind_capacity_proxy_mw"] * 24 * capacity_factor
+    result["physics_log_ratio"] = np.log(
+        (result["wind_energy_proxy_mwh"] + 1) / (result["solar_energy_proxy_mwh"] + 1)
+    )
+    return result
+
+
+def fit_physics_share(fit: pd.DataFrame) -> LogisticRegression:
+    """One-feature, MWh-weighted logistic calibration of the wind share."""
+
+    positive = fit.loc[fit["source_curtailment_total_mwh"].gt(0)]
+    stacked = pd.concat([positive[["physics_log_ratio"]]] * 2, ignore_index=True)
+    outcome = np.r_[np.ones(len(positive)), np.zeros(len(positive))]
+    mass = np.r_[positive["wind_curtailment_mwh"], positive["solar_curtailment_mwh"]]
+    return LogisticRegression(C=1.0).fit(stacked, outcome, sample_weight=mass)
 
 
 def _share(frame: pd.DataFrame) -> float:
@@ -291,6 +362,174 @@ def evaluate(
             "Solar's share of curtailment grew from about 6% (2024 train) to 13% (2025) and 19% (2026 test); models fitted on past years under-allocate solar.",
             "V2 features start 2024-04-01, so only 275 training days precede the 2025 validation year.",
             "V1 half-hour allocation was not attempted: its model-ready table covers January 2026 only, with little solar curtailment.",
+        ],
+    }
+    report = _rounded(report)
+    if report_path is not None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report
+
+
+def _gate(scores: dict[str, dict], candidate: str) -> dict[str, object]:
+    best_baseline = min(BASELINES, key=lambda name: scores[name]["combined_source_mae_mwh"])
+    beats = scores[candidate]["combined_source_mae_mwh"] < scores[best_baseline]["combined_source_mae_mwh"]
+    solar_ok = (
+        scores[candidate]["solar_active_solar_mae_mwh"]
+        <= SOLAR_ACTIVE_TOLERANCE * scores[best_baseline]["solar_active_solar_mae_mwh"]
+    )
+    return {"best_baseline": best_baseline, "beats_best_baseline": bool(beats), "solar_active_not_materially_worse": bool(solar_ok)}
+
+
+def evaluate_physics(
+    dataset_path: Path = daily_model.DEFAULT_DAILY_DATASET,
+    labels_path: Path = DEFAULT_SOURCE_LABELS,
+    artifact_path: Path = daily_model.DEFAULT_ARTIFACT,
+    history_path: Path = DEFAULT_HISTORY,
+    report_path: Path | None = PHYSICS_REPORT,
+) -> dict:
+    """Experiment 2: add the capacity-aware physics share and require fresh confirmation.
+
+    The 2026-01..08 test was viewed while designing this candidate, so it cannot
+    certify it. Release additionally needs >= MIN_CONFIRMATION_DAYS labelled days
+    from CONFIRMATION_START onward, scored with allocators frozen on 2024-2025.
+    """
+
+    history = pd.read_csv(
+        history_path,
+        usecols=["timestamp_utc", "eirgrid_ie_solar_availability_mw", "eirgrid_ie_wind_availability_mw"],
+    )
+    data = add_physics_features(load_dataset(dataset_path, labels_path), history)
+    published_before = data["issue_timestamp_utc"].dt.tz_localize(None).dt.to_period("M").dt.start_time.dt.tz_localize("UTC") - pd.DateOffset(months=1)
+    if (data["capacity_proxy_through_utc"] >= published_before).any():
+        raise ValueError("Capacity proxy reads a month that is not yet published at issue time")
+    train, validation, later = (part.reset_index(drop=True) for part in daily_model.chronological_partitions(data))
+    columns = feature_columns(data)
+    validation_total, later_total, method = _parent_totals(train, validation, later, columns, artifact_path)
+    in_test = later["issue_timestamp_utc"].lt(CONFIRMATION_START).to_numpy()
+    test, confirmation = later.loc[in_test].reset_index(drop=True), later.loc[~in_test].reset_index(drop=True)
+    test_total, confirmation_total = later_total[in_test], later_total[~in_test]
+    candidates = (*CANDIDATES, PHYSICS_CANDIDATE)
+
+    def shares(fit: pd.DataFrame, frame: pd.DataFrame) -> dict[str, np.ndarray]:
+        result = predict_wind_shares(fit_share_candidates(fit, columns), frame, columns)
+        result[PHYSICS_CANDIDATE] = fit_physics_share(fit).predict_proba(frame[["physics_log_ratio"]])[:, 1]
+        return result
+
+    validation_scores = {name: score(validation, validation_total, share) for name, share in shares(train, validation).items()}
+    selected = min(candidates, key=lambda name: (validation_scores[name]["combined_source_mae_mwh"], name))
+    development = pd.concat([train, validation], ignore_index=True)
+    test_shares = shares(development, test)
+    test_scores = {name: score(test, test_total, share) for name, share in test_shares.items()}
+    actual_total = test["source_curtailment_total_mwh"].to_numpy(dtype=float)
+    oracle = {name: score(test, actual_total, share) for name, share in test_shares.items()}
+    physics_model = fit_physics_share(development)
+
+    learned = selected not in BASELINES
+    if learned:
+        test_gate = _gate(test_scores, selected)
+    else:
+        test_gate = {"best_baseline": None, "beats_best_baseline": False, "solar_active_not_materially_worse": False}
+    confirmation_scores = None
+    confirmation_gate: dict[str, object] = {
+        "status": "pending", "rows": int(len(confirmation)), "required_rows": MIN_CONFIRMATION_DAYS,
+    }
+    if len(confirmation) >= MIN_CONFIRMATION_DAYS and learned:
+        confirmation_scores = {
+            name: score(confirmation, confirmation_total, share)
+            for name, share in shares(development, confirmation).items()
+        }
+        confirmation_gate.update(_gate(confirmation_scores, selected))
+        confirmation_gate["status"] = (
+            "passed"
+            if confirmation_gate["beats_best_baseline"] and confirmation_gate["solar_active_not_materially_worse"]
+            else "failed"
+        )
+    conserved = all(item["max_conservation_error_mwh"] < 1e-6 for item in test_scores.values())
+    test_passed = bool(
+        learned and test_gate["beats_best_baseline"] and test_gate["solar_active_not_materially_worse"] and conserved
+    )
+    passed = bool(test_passed and confirmation_gate["status"] == "passed")
+    if passed:
+        status = "passed_release_gate"
+    elif test_passed and confirmation_gate["status"] == "pending":
+        status = "candidate_awaiting_fresh_confirmation"
+    else:
+        status = "experimental_estimate_only"
+
+    report = {
+        "experiment": "daily_source_allocation_v2_physics",
+        "status": status,
+        "task": "Split V2's predicted UTC-day curtailment MWh into Wind and Solar",
+        "why_this_experiment": (
+            "Experiment 1 (evaluation.json) failed because solar's share grew each year. EirGrid curtails roughly "
+            "in proportion to each source's available output, so this candidate compares forecast solar and wind "
+            "energy scaled by a published capacity proxy."
+        ),
+        "physics_candidate": {
+            "name": PHYSICS_CANDIDATE,
+            "formula": (
+                "p_wind = 1 / (1 + exp(-(intercept + slope * ln((wind_energy + 1) / (solar_energy + 1))))); "
+                "solar_energy = solar_capacity_proxy_mw * mean regional forecast irradiance (kWh/m2/day); "
+                "wind_energy = wind_capacity_proxy_mw * 24 * clip((v - cut_in) / (rated - cut_in), 0, 1) ** exponent, "
+                "v = mean regional forecast 100 m wind speed (m/s)"
+            ),
+            "fitted_on": "Positive-curtailment days 2024-04-01 to 2025-12-31, weighted by MWh",
+            "intercept": float(physics_model.intercept_[0]),
+            "slope": float(physics_model.coef_[0][0]),
+            "fixed_constants": {
+                "capacity_publication_months": CAPACITY_PUBLICATION_MONTHS,
+                "capacity_window_days": CAPACITY_WINDOW_DAYS,
+                "wind_cut_in_ms": WIND_CUT_IN_MS,
+                "wind_rated_ms": WIND_RATED_MS,
+                "wind_curve_exponent": WIND_CURVE_EXPONENT,
+            },
+            "capacity_rule": (
+                "Maximum IE availability over the 365 days ending on the last day of calendar month M-2 for an "
+                "issue day in month M. EirGrid republishes the system workbook monthly, so month M-2 is public by then."
+            ),
+        },
+        "parent_model": {
+            "selected_amount_method": method,
+            "validation_parent_mae_mwh": float(np.abs(validation_total - validation["curtailment_mwh"]).mean()),
+            "test_parent_mae_mwh": float(np.abs(test_total - test["curtailment_mwh"]).mean()),
+        },
+        "inputs": {
+            "dataset_sha256": _sha256(dataset_path),
+            "source_labels_sha256": _sha256(labels_path),
+            "parent_artifact_sha256": _sha256(artifact_path),
+            "capacity_history_sha256": _sha256(history_path),
+        },
+        "rows": {"train": len(train), "validation": len(validation), "test": len(test), "confirmation": len(confirmation)},
+        "candidates": list(candidates),
+        "baselines": list(BASELINES),
+        "selected_on_validation": selected,
+        "validation_end_to_end": validation_scores,
+        "test_end_to_end": test_scores,
+        "test_by_quarter": _slices(
+            test, test_total, test_shares, tuple(dict.fromkeys((selected, *BASELINES, PHYSICS_CANDIDATE))),
+        ),
+        "test_oracle_total_diagnostic": {
+            "notice": "Allocates the ACTUAL daily total, which is unknown at issue time. Isolates share skill only; never a serving score.",
+            "scores": oracle,
+        },
+        "confirmation_end_to_end": confirmation_scores,
+        "release_gate": {
+            "rule": (
+                "Selected on 2025 validation; must be a learned candidate that beats the best baseline's combined "
+                f"source MAE and stays within {SOLAR_ACTIVE_TOLERANCE:.2f}x its solar-active solar MAE on the "
+                f"2026-01..08 test AND again on >= {MIN_CONFIRMATION_DAYS} fresh days from "
+                f"{CONFIRMATION_START.date().isoformat()}, which were unseen when this candidate was designed."
+            ),
+            "test_2026": {**test_gate, "conserves_parent_total": conserved, "holdout_viewed_during_design": True},
+            "fresh_confirmation": confirmation_gate,
+            "passed": passed,
+        },
+        "limitations": [
+            "The 2026-01..08 test had been viewed in experiment 1 and in exploratory research, so it cannot certify this candidate on its own.",
+            "The parent's daily total error still dominates; allocation improves Wind/Solar error but cannot fix a wrong total.",
+            "The capacity proxy uses observed availability, not official installed capacity, and assumes EirGrid's monthly publication cadence holds.",
+            "The share is a daily average; it does not describe which half-hours were curtailed.",
         ],
     }
     report = _rounded(report)
