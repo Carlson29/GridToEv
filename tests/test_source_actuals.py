@@ -142,6 +142,13 @@ class SourceActualsDeploymentTests(unittest.TestCase):
         for shipped in ("models/v2/source_allocation_physics.json", "benchmarks/daily_source_allocation_v2/physics_evaluation.json"):
             self.assertIn(f"COPY --chown=gridtoev:gridtoev {shipped} ./{shipped}", dockerfile)
         self.assertIn("!models/v2/source_allocation_physics.json", (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines())
+        # The installed package's PROJECT_ROOT is site-packages, so every split file needs an explicit /app path.
+        for setting in (
+            "GRIDTOEV_SOURCE_MODEL_PATH=/app/models/v2/source_allocation_physics.json",
+            "GRIDTOEV_SOURCE_REPORT_PATH=/app/benchmarks/daily_source_allocation_v2/physics_evaluation.json",
+            "GRIDTOEV_SOURCE_CAPACITY_PATH=/app/data/processed/eirgrid_core_history_30min.csv.gz",
+        ):
+            self.assertIn(setting, dockerfile)
 
 
 if __name__ == "__main__":

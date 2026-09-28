@@ -9,6 +9,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     GRIDTOEV_DAILY_REPORT_PATH=/app/benchmarks/daily_curtailment_v2/evaluation.json \
     GRIDTOEV_ACTUALS_PATH=/app/data/processed/eirgrid_core_history_30min.csv.gz \
     GRIDTOEV_SOURCE_ACTUALS_PATH=/app/data/processed/eirgrid_source_curtailment_30min.csv.gz \
+    GRIDTOEV_SOURCE_MODEL_PATH=/app/models/v2/source_allocation_physics.json \
+    GRIDTOEV_SOURCE_REPORT_PATH=/app/benchmarks/daily_source_allocation_v2/physics_evaluation.json \
+    GRIDTOEV_SOURCE_CAPACITY_PATH=/app/data/processed/eirgrid_core_history_30min.csv.gz \
     GRIDTOEV_CONTRACT_PATH=/app/config/benchmark_contract.v2.json \
     GRIDTOEV_RELEASE_REPORT_PATH=/app/benchmarks/release_preflight/release_report.v2.json
 

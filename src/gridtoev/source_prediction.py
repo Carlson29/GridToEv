@@ -30,6 +30,15 @@ from .source_allocation import (
 
 
 logger = logging.getLogger(__name__)
+# Served forecasts form the prospective test's audit trail, so they must reach the
+# server log even though the root logger defaults to WARNING.
+audit_logger = logging.getLogger("gridtoev.source_split_audit")
+if not audit_logger.handlers:
+    _audit_handler = logging.StreamHandler()
+    _audit_handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s"))
+    audit_logger.addHandler(_audit_handler)
+    audit_logger.setLevel(logging.INFO)
+    audit_logger.propagate = False
 CAPACITY_COLUMNS = ["timestamp_utc", "eirgrid_ie_solar_availability_mw", "eirgrid_ie_wind_availability_mw"]
 
 
@@ -178,7 +187,7 @@ class SourceAllocationService:
             ),
         }
         # Audit trail for the prospective test: prediction fixed before the outcome is known.
-        logger.info(
+        audit_logger.info(
             "source_split_prediction target=%s issued_at=%s total=%.3f wind=%.3f solar=%.3f artifact=%s",
             result["target_date_utc"], datetime.now(timezone.utc).isoformat(), total, wind, solar,
             self.report["serving_artifact_sha256"] if self.report else None,
